@@ -16,6 +16,7 @@
     "@types/express": "^5.0.3",
     "@types/mongoose": "^5.11.96",
     "appwrite": "^21.4.0",
+    "axios": "^1.13.2",
     "bcrypt": "^6.0.0",
     "busboy": "^1.6.0",
     "compression": "^1.8.1",
@@ -36,6 +37,7 @@
     "node-appwrite": "^20.3.0",
     "node-fetch": "^3.3.2",
     "nodemailer": "^7.0.9",
+    "uuid": "^13.0.0",
     "winston": "^3.18.3"
   },
   "devDependencies": {
@@ -51,8 +53,9 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/morgan": "^1.9.10",
     "@types/multer": "^2.0.0",
-    "@types/node": "^24.9.2",
+    "@types/node": "^24.10.1",
     "@types/nodemailer": "^7.0.2",
+    "@types/uuid": "^10.0.0",
     "@types/winston": "^2.4.4",
     "nodemon": "^3.1.10",
     "ts-node": "^10.9.2",
