@@ -18,10 +18,13 @@ import { Client, Databases } from "node-appwrite";
 // Routers
 import dashboardRouter from "./routes/dashboard";
 import propertiesRoutes from "./routes/propertyRoutes";
+import storageRoutes from "./routes/storageRoutes";
 import userRoutes from "./routes/userRoutes";
 
 const PORT = parseInt(process.env.PORT || "4011", 10);
 const app = express();
+app.use(storageRoutes);
+
 app.set("trust proxy", true);
 
 //

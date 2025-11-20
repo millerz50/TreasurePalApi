@@ -1,9 +1,10 @@
+// server/services/storageService.ts
 import axios from "axios";
 import FormData from "form-data";
 import { v4 as uuid } from "uuid";
 
 export async function uploadAvatar(file: Express.Multer.File): Promise<string> {
-  const endpoint = normalizeV1(process.env.APPWRITE_ENDPOINT!); // e.g. https://nyc.cloud.appwrite.io/v1
+  const endpoint = normalizeV1(process.env.APPWRITE_ENDPOINT!);
   const project = process.env.APPWRITE_PROJECT_ID!;
   const apiKey = process.env.APPWRITE_API_KEY!;
   const bucketId = process.env.APPWRITE_BUCKET_ID!;
