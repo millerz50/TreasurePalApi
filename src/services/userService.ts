@@ -86,12 +86,20 @@ export async function listUsers(limit = 100, offset = 0) {
 export async function createUser(payload: Record<string, any>) {
   try {
     const id = ID.unique();
-    // ✅ ensure payload uses lowercase "accountid"
+
+    // Normalize accountId → accountid
     if (payload.accountId && !payload.accountid) {
       payload.accountid = payload.accountId;
       delete payload.accountId;
     }
+
+    // Ensure password is present (schema requires it)
+    if (!payload.password) {
+      throw new Error("❌ Missing required attribute: password");
+    }
+
     const row = await tablesDB.createRow(DB_ID, USERS_TABLE, id, payload);
+
     if (DEBUG) console.log("createUser payload:", payload, "row:", row);
     return safeFormat(row);
   } catch (err) {
