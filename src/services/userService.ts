@@ -51,15 +51,15 @@ export async function getUserById(userId: string): Promise<UserRow | null> {
 }
 
 export async function getUserByAccountId(
-  accountId: string
+  accountid: string
 ): Promise<UserRow | null> {
   try {
     const res = await tablesDB.listRows(DB_ID, USERS_TABLE, [
-      Query.equal("accountId", accountId),
+      Query.equal("accountid", accountid), // ✅ lowercase
     ]);
     return res.total > 0 ? safeFormat(res.rows[0]) : null;
   } catch (err) {
-    logError("getUserByAccountId", err, { accountId });
+    logError("getUserByAccountId", err, { accountid });
     return null;
   }
 }
@@ -86,12 +86,17 @@ export async function listUsers(limit = 100, offset = 0) {
 export async function createUser(payload: Record<string, any>) {
   try {
     const id = ID.unique();
+    // ✅ ensure payload uses lowercase "accountid"
+    if (payload.accountId && !payload.accountid) {
+      payload.accountid = payload.accountId;
+      delete payload.accountId;
+    }
     const row = await tablesDB.createRow(DB_ID, USERS_TABLE, id, payload);
     if (DEBUG) console.log("createUser payload:", payload, "row:", row);
     return safeFormat(row);
   } catch (err) {
     logError("createUser", err, { payload });
-    throw err; // bubble up so caller knows creation failed
+    throw err;
   }
 }
 
