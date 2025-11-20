@@ -23,7 +23,7 @@ type UserRow = any;
 function safeFormat(row: any) {
   if (!row) return null;
   const formatted = { ...row };
-  delete formatted.password;
+  delete formatted.password; // never expose password
   return formatted;
 }
 
@@ -55,7 +55,7 @@ export async function getUserByAccountId(
 ): Promise<UserRow | null> {
   try {
     const res = await tablesDB.listRows(DB_ID, USERS_TABLE, [
-      Query.equal("accountid", accountid), // ✅ lowercase
+      Query.equal("accountid", accountid),
     ]);
     return res.total > 0 ? safeFormat(res.rows[0]) : null;
   } catch (err) {
@@ -93,10 +93,16 @@ export async function createUser(payload: Record<string, any>) {
       delete payload.accountId;
     }
 
-    // Ensure password is present (schema requires it)
-    if (!payload.password) {
+    // Ensure required attributes
+    if (!payload.accountid)
+      throw new Error("❌ Missing required attribute: accountid");
+    if (!payload.email) throw new Error("❌ Missing required attribute: email");
+    if (!payload.firstName)
+      throw new Error("❌ Missing required attribute: firstName");
+    if (!payload.surname)
+      throw new Error("❌ Missing required attribute: surname");
+    if (!payload.password)
       throw new Error("❌ Missing required attribute: password");
-    }
 
     const row = await tablesDB.createRow(DB_ID, USERS_TABLE, id, payload);
 
