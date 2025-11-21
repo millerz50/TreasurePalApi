@@ -1,5 +1,5 @@
 // server/services/userService.ts
-import { Client, ID, Query, TablesDB } from "node-appwrite";
+import { Client, ID, Query, TablesDB, Users } from "node-appwrite";
 
 const client = new Client()
   .setEndpoint(process.env.APPWRITE_ENDPOINT!)
@@ -7,6 +7,7 @@ const client = new Client()
   .setKey(process.env.APPWRITE_API_KEY!);
 
 const tablesDB = new TablesDB(client);
+const users = new Users(client);
 
 const DB_ID = process.env.APPWRITE_DATABASE_ID!;
 const USERS_TABLE = process.env.APPWRITE_USERTABLE_ID || "user";
@@ -44,6 +45,7 @@ function logError(
   );
 }
 
+// 🔎 Get by table row ID
 export async function getUserById(userId: string): Promise<UserRow | null> {
   try {
     const row = await tablesDB.getRow(DB_ID, USERS_TABLE, userId);
@@ -54,6 +56,7 @@ export async function getUserById(userId: string): Promise<UserRow | null> {
   }
 }
 
+// 🔎 Get by linked auth user ID
 export async function getUserByAccountId(
   accountid: string
 ): Promise<UserRow | null> {
@@ -68,6 +71,7 @@ export async function getUserByAccountId(
   }
 }
 
+// 📋 List all users
 export async function listUsers(limit = 100, offset = 0) {
   try {
     const res = await tablesDB.listRows(DB_ID, USERS_TABLE, [], String(limit));
@@ -80,37 +84,45 @@ export async function listUsers(limit = 100, offset = 0) {
   }
 }
 
-export async function createUser(payload: Record<string, unknown>) {
+// 🆕 Signup: create auth user + profile row
+export async function signupUser(payload: {
+  email: string;
+  password: string;
+  firstName: string;
+  surname: string;
+  phone?: string;
+  role?: string;
+  status?: string;
+}) {
   try {
-    const rowId = ID.unique();
+    // 1. Create auth user
+    const authUser = await users.create(ID.unique(), payload.email);
+    await users.updatePassword(authUser.$id, payload.password);
+    await users.updateName(
+      authUser.$id,
+      `${payload.firstName} ${payload.surname}`
+    );
 
-    // Normalize accountId → accountid
-    if (payload.accountId && !payload.accountid) {
-      payload.accountid = payload.accountId;
-      delete payload.accountId;
-    }
+    // 2. Create profile row linked to auth user
+    const row = await tablesDB.createRow(DB_ID, USERS_TABLE, ID.unique(), {
+      accountid: authUser.$id,
+      email: payload.email.toLowerCase(),
+      firstName: payload.firstName,
+      surname: payload.surname,
+      phone: payload.phone ?? null,
+      role: payload.role ?? "user",
+      status: payload.status ?? "Pending",
+    });
 
-    // Ensure required attributes
-    if (!payload.accountid)
-      throw new Error("❌ Missing required attribute: accountid");
-    if (!payload.email) throw new Error("❌ Missing required attribute: email");
-    if (!payload.firstName)
-      throw new Error("❌ Missing required attribute: firstName");
-    if (!payload.surname)
-      throw new Error("❌ Missing required attribute: surname");
-    if (!payload.password)
-      throw new Error("❌ Missing required attribute: password");
-
-    const row = await tablesDB.createRow(DB_ID, USERS_TABLE, rowId, payload);
-
-    if (DEBUG) console.log("createUser payload:", payload, "row:", row);
-    return safeFormat(row);
+    if (DEBUG) console.log("signupUser auth:", authUser, "profile:", row);
+    return { authUser, profile: safeFormat(row) };
   } catch (err: unknown) {
-    logError("createUser", err, { payload });
+    logError("signupUser", err, { payload });
     throw err;
   }
 }
 
+// ✏️ Update profile row
 export async function updateUser(
   userId: string,
   updates: Record<string, unknown>
@@ -125,6 +137,7 @@ export async function updateUser(
   }
 }
 
+// ❌ Delete profile row
 export async function deleteUser(userId: string) {
   try {
     return await tablesDB.deleteRow(DB_ID, USERS_TABLE, userId);
@@ -134,6 +147,7 @@ export async function deleteUser(userId: string) {
   }
 }
 
+// 🔧 Set role
 export async function setRole(userId: string, role: string) {
   try {
     const row = await tablesDB.updateRow(DB_ID, USERS_TABLE, userId, { role });
@@ -144,6 +158,7 @@ export async function setRole(userId: string, role: string) {
   }
 }
 
+// 🔧 Set status
 export async function setStatus(userId: string, status: string) {
   try {
     const row = await tablesDB.updateRow(DB_ID, USERS_TABLE, userId, {
@@ -156,6 +171,7 @@ export async function setStatus(userId: string, status: string) {
   }
 }
 
+// 🔎 Find by email
 export async function findByEmail(email: string) {
   try {
     const res = await tablesDB.listRows(DB_ID, USERS_TABLE, [
