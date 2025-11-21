@@ -107,7 +107,6 @@ app.use("/api", limiter);
 app.use("/api/properties", propertiesRoutes);
 app.use("/api/dashboard", dashboardRouter);
 app.use("/api/users", userRoutes);
-app.use("/api/user", userRoutes); // Optional alias
 app.use("/api/storage", storageRoutes);
 //
 // ✅ Health Check (Appwrite Ping)
