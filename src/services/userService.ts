@@ -1,5 +1,5 @@
 // server/services/userService.ts
-import { Client, ID, Query, TablesDB, Users } from "node-appwrite";
+const { Client, ID, Query, TablesDB, Users } = require("node-appwrite");
 
 const client = new Client()
   .setEndpoint(process.env.APPWRITE_ENDPOINT!)
