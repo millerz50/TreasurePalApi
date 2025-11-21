@@ -24,7 +24,7 @@ type UserRow = Record<string, unknown>;
 function safeFormat(row: unknown): UserRow | null {
   if (!row || typeof row !== "object") return null;
   const formatted = { ...(row as Record<string, unknown>) };
-  delete formatted.password;
+  delete formatted.password; // never expose password in responses
   return formatted;
 }
 
@@ -93,6 +93,10 @@ export async function signupUser(payload: {
   phone?: string;
   role?: string;
   status?: string;
+  nationalId?: string;
+  bio?: string;
+  avatarFileId?: string;
+  metadata?: string[];
 }) {
   try {
     // 1. Create auth user
@@ -112,6 +116,11 @@ export async function signupUser(payload: {
       phone: payload.phone ?? null,
       role: payload.role ?? "user",
       status: payload.status ?? "Pending",
+      password: payload.password, // ✅ include password to satisfy schema
+      nationalId: payload.nationalId ?? null,
+      bio: payload.bio ?? null,
+      avatarFileId: payload.avatarFileId ?? null,
+      metadata: payload.metadata ?? [],
     });
 
     if (DEBUG) console.log("signupUser auth:", authUser, "profile:", row);
@@ -133,7 +142,7 @@ export async function updateUser(
   updates: Record<string, unknown>
 ) {
   try {
-    if ("password" in updates) delete updates.password;
+    if ("password" in updates) delete updates.password; // don’t allow password updates via table
     const row = await tablesDB.updateRow(DB_ID, USERS_TABLE, userId, updates);
     return safeFormat(row);
   } catch (err: unknown) {
