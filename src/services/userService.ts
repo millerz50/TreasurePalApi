@@ -1,31 +1,28 @@
 // server/services/userService.ts
-import { Client, Databases, ID, Query, Users } from "node-appwrite";
+import { Client, ID, Query, TablesDB } from "node-appwrite";
 
 const client = new Client()
   .setEndpoint(process.env.APPWRITE_ENDPOINT!)
   .setProject(process.env.APPWRITE_PROJECT_ID!)
   .setKey(process.env.APPWRITE_API_KEY!);
 
-// Appwrite services
-const databases = new Databases(client);
-const users = new Users(client);
+const tablesDB = new TablesDB(client);
 
-// Config
 const DB_ID = process.env.APPWRITE_DATABASE_ID!;
-const USERS_COLLECTION_ID = process.env.APPWRITE_USERS_COLLECTION_ID || "user";
+const USERS_TABLE = process.env.APPWRITE_USERTABLE_ID || "user";
 const DEBUG = process.env.DEBUG === "true";
 
-if (!DB_ID || !USERS_COLLECTION_ID) {
+if (!DB_ID || !USERS_TABLE) {
   throw new Error(
-    `❌ Missing Appwrite config: DB_ID=${DB_ID}, USERS_COLLECTION_ID=${USERS_COLLECTION_ID}`
+    `❌ Missing Appwrite config: DB_ID=${DB_ID}, USERS_TABLE=${USERS_TABLE}`
   );
 }
 
-type UserDoc = Record<string, unknown>;
+type UserRow = Record<string, unknown>;
 
-function safeFormat(doc: unknown): UserDoc | null {
-  if (!doc || typeof doc !== "object") return null;
-  const formatted = { ...(doc as Record<string, unknown>) };
+function safeFormat(row: unknown): UserRow | null {
+  if (!row || typeof row !== "object") return null;
+  const formatted = { ...(row as Record<string, unknown>) };
   delete formatted.password;
   return formatted;
 }
@@ -47,24 +44,24 @@ function logError(
   );
 }
 
-export async function getUserById(docId: string): Promise<UserDoc | null> {
+export async function getUserById(userId: string): Promise<UserRow | null> {
   try {
-    const doc = await databases.getDocument(DB_ID, USERS_COLLECTION_ID, docId);
-    return safeFormat(doc);
+    const row = await tablesDB.getRow(DB_ID, USERS_TABLE, userId);
+    return safeFormat(row);
   } catch (err: unknown) {
-    logError("getUserById", err, { docId });
+    logError("getUserById", err, { userId });
     return null;
   }
 }
 
 export async function getUserByAccountId(
   accountid: string
-): Promise<UserDoc | null> {
+): Promise<UserRow | null> {
   try {
-    const res = await databases.listDocuments(DB_ID, USERS_COLLECTION_ID, [
+    const res = await tablesDB.listRows(DB_ID, USERS_TABLE, [
       Query.equal("accountid", accountid),
     ]);
-    return res.total > 0 ? safeFormat(res.documents[0]) : null;
+    return res.total > 0 ? safeFormat(res.rows[0]) : null;
   } catch (err: unknown) {
     logError("getUserByAccountId", err, { accountid });
     return null;
@@ -73,14 +70,9 @@ export async function getUserByAccountId(
 
 export async function listUsers(limit = 100, offset = 0) {
   try {
-    const res = await databases.listDocuments(
-      DB_ID,
-      USERS_COLLECTION_ID,
-      [],
-      String(limit) // ✅ cast to string
-    );
-    const docs = Array.isArray(res.documents) ? res.documents : [];
-    const users = docs.slice(offset, offset + limit).map(safeFormat);
+    const res = await tablesDB.listRows(DB_ID, USERS_TABLE, [], String(limit));
+    const rows = Array.isArray(res.rows) ? res.rows : [];
+    const users = rows.slice(offset, offset + limit).map(safeFormat);
     return { total: res.total ?? users.length, users };
   } catch (err: unknown) {
     logError("listUsers", err, { limit, offset });
@@ -88,131 +80,88 @@ export async function listUsers(limit = 100, offset = 0) {
   }
 }
 
-/**
- * Create an Appwrite auth user AND a profile document.
- */
-export async function signupUser(payload: {
-  email: string;
-  password: string;
-  firstName: string;
-  surname: string;
-  role?: "user" | "agent";
-  status?: "Not Verified" | "Pending" | "Active" | "Suspended";
-  phone?: string | null;
-  nationalId?: string | null;
-  bio?: string | null;
-  metadata?: string[];
-  avatarFileId?: string | null;
-}) {
+export async function createUser(payload: Record<string, unknown>) {
   try {
-    // 1) Create auth user with a valid ID
-    const authUserId = ID.unique();
-    const name = `${payload.firstName} ${payload.surname}`.trim();
+    const rowId = ID.unique();
 
-    const authUser = await users.create(authUserId, payload.email);
-    await users.updatePassword(authUser.$id, payload.password);
-    await users.updateName(authUser.$id, name);
+    // Normalize accountId → accountid
+    if (payload.accountId && !payload.accountid) {
+      payload.accountid = payload.accountId;
+      delete payload.accountId;
+    }
 
-    // 2) Create profile document referencing auth `$id`
-    const docId = ID.unique();
-    const profile: Record<string, unknown> = {
-      accountid: authUser.$id,
-      email: payload.email.toLowerCase(),
-      firstName: payload.firstName,
-      surname: payload.surname,
-      role: payload.role ?? "user",
-      status: payload.status ?? "Pending",
-      phone: payload.phone ?? null,
-      nationalId: payload.nationalId ?? null,
-      bio: payload.bio ?? null,
-      metadata: payload.metadata ?? [],
-      avatarFileId: payload.avatarFileId ?? null,
-    };
+    // Ensure required attributes
+    if (!payload.accountid)
+      throw new Error("❌ Missing required attribute: accountid");
+    if (!payload.email) throw new Error("❌ Missing required attribute: email");
+    if (!payload.firstName)
+      throw new Error("❌ Missing required attribute: firstName");
+    if (!payload.surname)
+      throw new Error("❌ Missing required attribute: surname");
+    if (!payload.password)
+      throw new Error("❌ Missing required attribute: password");
 
-    const doc = await databases.createDocument(
-      DB_ID,
-      USERS_COLLECTION_ID,
-      docId,
-      profile
-    );
+    const row = await tablesDB.createRow(DB_ID, USERS_TABLE, rowId, payload);
 
-    if (DEBUG) console.log("signupUser auth:", authUser, "profile:", doc);
-    return safeFormat(doc);
+    if (DEBUG) console.log("createUser payload:", payload, "row:", row);
+    return safeFormat(row);
   } catch (err: unknown) {
-    logError("signupUser", err, { payload: { email: payload.email } });
+    logError("createUser", err, { payload });
     throw err;
   }
 }
 
-// ✅ Alias for backwards compatibility
-export async function createUser(payload: Parameters<typeof signupUser>[0]) {
-  return signupUser(payload);
-}
-
 export async function updateUser(
-  docId: string,
+  userId: string,
   updates: Record<string, unknown>
 ) {
   try {
     if ("password" in updates) delete updates.password;
-    const doc = await databases.updateDocument(
-      DB_ID,
-      USERS_COLLECTION_ID,
-      docId,
-      updates
-    );
-    return safeFormat(doc);
+    const row = await tablesDB.updateRow(DB_ID, USERS_TABLE, userId, updates);
+    return safeFormat(row);
   } catch (err: unknown) {
-    logError("updateUser", err, { docId, updates });
+    logError("updateUser", err, { userId, updates });
     throw err;
   }
 }
 
-export async function deleteUser(docId: string) {
+export async function deleteUser(userId: string) {
   try {
-    return await databases.deleteDocument(DB_ID, USERS_COLLECTION_ID, docId);
+    return await tablesDB.deleteRow(DB_ID, USERS_TABLE, userId);
   } catch (err: unknown) {
-    logError("deleteUser", err, { docId });
+    logError("deleteUser", err, { userId });
     throw err;
   }
 }
 
-export async function setRole(docId: string, role: string) {
+export async function setRole(userId: string, role: string) {
   try {
-    const doc = await databases.updateDocument(
-      DB_ID,
-      USERS_COLLECTION_ID,
-      docId,
-      { role }
-    );
-    return safeFormat(doc);
+    const row = await tablesDB.updateRow(DB_ID, USERS_TABLE, userId, { role });
+    return safeFormat(row);
   } catch (err: unknown) {
-    logError("setRole", err, { docId, role });
+    logError("setRole", err, { userId, role });
     throw err;
   }
 }
 
-export async function setStatus(docId: string, status: string) {
+export async function setStatus(userId: string, status: string) {
   try {
-    const doc = await databases.updateDocument(
-      DB_ID,
-      USERS_COLLECTION_ID,
-      docId,
-      { status }
-    );
-    return safeFormat(doc);
+    const row = await tablesDB.updateRow(DB_ID, USERS_TABLE, userId, {
+      status,
+    });
+    return safeFormat(row);
   } catch (err: unknown) {
-    logError("setStatus", err, { docId, status });
+    logError("setStatus", err, { userId, status });
     throw err;
   }
 }
 
 export async function findByEmail(email: string) {
   try {
-    const res = await databases.listDocuments(DB_ID, USERS_COLLECTION_ID, [
+    const res = await tablesDB.listRows(DB_ID, USERS_TABLE, [
       Query.equal("email", email.toLowerCase()),
     ]);
-    return res.total > 0 ? safeFormat(res.documents[0]) : null;
+    return res.total > 0 ? safeFormat(res.rows[0]) : null;
   } catch (err: unknown) {
     logError("findByEmail", err, { email });
     return null;
