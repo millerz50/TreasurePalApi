@@ -77,7 +77,7 @@ export async function listUsers(limit = 100, offset = 0) {
       DB_ID,
       USERS_COLLECTION_ID,
       [],
-      limit
+      String(limit) // ✅ cast to string
     );
     const docs = Array.isArray(res.documents) ? res.documents : [];
     const users = docs.slice(offset, offset + limit).map(safeFormat);
@@ -142,6 +142,11 @@ export async function signupUser(payload: {
     logError("signupUser", err, { payload: { email: payload.email } });
     throw err;
   }
+}
+
+// ✅ Alias for backwards compatibility
+export async function createUser(payload: Parameters<typeof signupUser>[0]) {
+  return signupUser(payload);
 }
 
 export async function updateUser(
