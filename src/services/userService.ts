@@ -122,6 +122,11 @@ export async function signupUser(payload: {
   }
 }
 
+// ✅ Alias for backwards compatibility
+export async function createUser(payload: Parameters<typeof signupUser>[0]) {
+  return signupUser(payload);
+}
+
 // ✏️ Update profile row
 export async function updateUser(
   userId: string,
