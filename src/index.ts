@@ -23,7 +23,6 @@ import userRoutes from "./routes/userRoutes";
 
 const PORT = parseInt(process.env.PORT || "4011", 10);
 const app = express();
-app.use(storageRoutes);
 
 app.set("trust proxy", true);
 
@@ -109,7 +108,7 @@ app.use("/api/properties", propertiesRoutes);
 app.use("/api/dashboard", dashboardRouter);
 app.use("/api/users", userRoutes);
 app.use("/api/user", userRoutes); // Optional alias
-
+app.use("/api/storage", storageRoutes);
 //
 // ✅ Health Check (Appwrite Ping)
 //

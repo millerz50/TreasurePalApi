@@ -6,7 +6,7 @@ import { uploadAvatar } from "../services/storageService"; // or move uploadAvat
 const router = express.Router();
 const upload = multer();
 
-router.post("/api/storage/upload", upload.single("file"), async (req, res) => {
+router.post("/upload", upload.single("file"), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: "No file uploaded" });
