@@ -1,14 +1,10 @@
-// server/middleware/authMiddleware.ts
 import { NextFunction, Request, Response } from "express";
 import { Account, Client } from "node-appwrite";
 
 const client = new Client()
   .setEndpoint(process.env.APPWRITE_ENDPOINT!)
-  .setProject(process.env.APPWRITE_PROJECT_ID!)
-  .setKey(process.env.APPWRITE_API_KEY!);
+  .setProject(process.env.APPWRITE_PROJECT_ID!);
 
-// NOTE: Using API key to verify sessions is one approach.
-// If you rely on client sessions, you can also accept JWTs from headers/cookies.
 const account = new Account(client);
 
 // Extend Express Request type to include accountId
@@ -26,17 +22,23 @@ export async function authMiddleware(
   next: NextFunction
 ) {
   try {
-    // Example: read Appwrite userId from a header set by your edge or login proxy
-    // Preferably validate a JWT or session cookie. Adjust as needed.
-    const accountId = req.header("x-appwrite-account-id");
-
-    if (!accountId) {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
-    req.accountId = accountId;
+    const token = authHeader.replace("Bearer ", "").trim();
+
+    // Configure client per request with JWT instead of API key
+    client.setJWT(token);
+
+    // Validate session and get user
+    const user = await account.get();
+    req.accountId = user.$id;
+
     return next();
   } catch (err) {
+    console.error("❌ Auth middleware error:", err);
     return res.status(401).json({ error: "Unauthorized" });
   }
 }
