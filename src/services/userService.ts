@@ -1,4 +1,5 @@
 // server/services/userService.ts
+/* eslint-disable @typescript-eslint/no-explicit-any */
 const { Client, ID, Query, TablesDB, Users } = require("node-appwrite");
 
 const client = new Client()
@@ -19,12 +20,26 @@ if (!DB_ID || !USERS_TABLE) {
   );
 }
 
-type UserRow = Record<string, unknown>;
+export interface UserRow {
+  $id?: string;
+  accountid?: string;
+  email?: string;
+  firstName?: string;
+  surname?: string;
+  phone?: string | null;
+  role?: string;
+  status?: string;
+  nationalId?: string | null;
+  bio?: string | null;
+  avatarFileId?: string | null;
+  metadata?: string[];
+  [key: string]: unknown;
+}
 
 function safeFormat(row: unknown): UserRow | null {
   if (!row || typeof row !== "object") return null;
-  const formatted = { ...(row as Record<string, unknown>) };
-  delete formatted.password; // never expose password in responses
+  const formatted = { ...(row as UserRow) };
+  delete (formatted as any).password; // never expose password in responses
   return formatted;
 }
 
@@ -56,7 +71,7 @@ export async function getUserById(userId: string): Promise<UserRow | null> {
   }
 }
 
-// 🔎 Get by linked auth user ID
+// 🔎 Get by linked auth user ID (Appwrite accountId)
 export async function getUserByAccountId(
   accountid: string
 ): Promise<UserRow | null> {
@@ -76,8 +91,8 @@ export async function listUsers(limit = 100, offset = 0) {
   try {
     const res = await tablesDB.listRows(DB_ID, USERS_TABLE, [], String(limit));
     const rows = Array.isArray(res.rows) ? res.rows : [];
-    const users = rows.slice(offset, offset + limit).map(safeFormat);
-    return { total: res.total ?? users.length, users };
+    const usersList = rows.slice(offset, offset + limit).map(safeFormat);
+    return { total: res.total ?? usersList.length, users: usersList };
   } catch (err: unknown) {
     logError("listUsers", err, { limit, offset });
     return { total: 0, users: [] };
@@ -99,7 +114,7 @@ export async function signupUser(payload: {
   metadata?: string[];
 }) {
   try {
-    // 1. Create auth user
+    // 1. Create auth user (Appwrite)
     const authUser = await users.create(ID.unique(), payload.email);
     await users.updatePassword(authUser.$id, payload.password);
     await users.updateName(
@@ -115,8 +130,10 @@ export async function signupUser(payload: {
       surname: payload.surname,
       phone: payload.phone ?? null,
       role: payload.role ?? "user",
-      status: payload.status ?? "Pending",
-      password: payload.password, // ✅ include password to satisfy schema
+      status: payload.status ?? "Active",
+      // NOTE: If your schema currently requires password column, keep it,
+      // but you should remove that requirement and stop storing passwords in tables.
+      password: payload.password, // Ideally remove from schema ASAP
       nationalId: payload.nationalId ?? null,
       bio: payload.bio ?? null,
       avatarFileId: payload.avatarFileId ?? null,
@@ -142,7 +159,7 @@ export async function updateUser(
   updates: Record<string, unknown>
 ) {
   try {
-    if ("password" in updates) delete updates.password; // don’t allow password updates via table
+    if ("password" in updates) delete (updates as any).password; // don’t allow password updates via table
     const row = await tablesDB.updateRow(DB_ID, USERS_TABLE, userId, updates);
     return safeFormat(row);
   } catch (err: unknown) {
