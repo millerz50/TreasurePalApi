@@ -1,12 +1,6 @@
 import { NextFunction, Request, Response } from "express";
 import { Account, Client } from "node-appwrite";
 
-const client = new Client()
-  .setEndpoint(process.env.APPWRITE_ENDPOINT!)
-  .setProject(process.env.APPWRITE_PROJECT_ID!);
-
-const account = new Account(client);
-
 // Extend Express Request type to include accountId
 declare global {
   namespace Express {
@@ -29,8 +23,13 @@ export async function authMiddleware(
 
     const token = authHeader.replace("Bearer ", "").trim();
 
-    // Configure client per request with JWT instead of API key
-    client.setJWT(token);
+    // Create a fresh client per request
+    const client = new Client()
+      .setEndpoint(process.env.APPWRITE_ENDPOINT!)
+      .setProject(process.env.APPWRITE_PROJECT_ID!)
+      .setJWT(token);
+
+    const account = new Account(client);
 
     // Validate session and get user
     const user = await account.get();
