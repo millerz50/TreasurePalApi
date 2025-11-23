@@ -1,27 +1,49 @@
-// server/services/storageService.ts
 import axios from "axios";
 import FormData from "form-data";
+import fs from "fs";
+import path from "path";
 import { v4 as uuid } from "uuid";
 
-export async function uploadAvatar(file: Express.Multer.File): Promise<string> {
-  const endpoint = normalizeV1(process.env.APPWRITE_ENDPOINT!);
+function normalizeEndpoint(endpoint?: string) {
+  if (!endpoint) throw new Error("APPWRITE_ENDPOINT not set");
+  return endpoint.endsWith("/v1")
+    ? endpoint.replace(/\/$/, "")
+    : endpoint.replace(/\/$/, "") + "/v1";
+}
+
+export async function uploadToAppwriteBucket(
+  buffer: Buffer,
+  originalName?: string
+) {
+  const endpointRaw = process.env.APPWRITE_ENDPOINT!;
+  const endpoint = endpointRaw.endsWith("/v1")
+    ? endpointRaw
+    : endpointRaw.replace(/\/$/, "") + "/v1";
   const project = process.env.APPWRITE_PROJECT_ID!;
   const apiKey = process.env.APPWRITE_API_KEY!;
   const bucketId = process.env.APPWRITE_BUCKET_ID!;
-  const fileId = uuid();
+
+  if (!project || !apiKey || !bucketId)
+    throw new Error("Missing Appwrite env vars");
+
+  const fileId = `file-${uuid()}`;
+  const filename = originalName || fileId;
+
+  const tmpDir = path.join(process.cwd(), "tmp");
+  if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir);
+  const tempPath = path.join(tmpDir, `${fileId}-${filename}`);
+  fs.writeFileSync(tempPath, buffer);
 
   const form = new FormData();
   form.append("fileId", fileId);
-  form.append("file", file.buffer, {
-    filename: file.originalname || `avatar-${fileId}`,
-    contentType: file.mimetype || "application/octet-stream",
-    knownLength: file.size,
-  });
+  // toggle public read quickly for verification; remove for private files
+  form.append("read[]", "role:all");
+  form.append("file", fs.createReadStream(tempPath), { filename });
 
-  const res = await axios.post(
-    `${endpoint}/storage/buckets/${bucketId}/files`,
-    form,
-    {
+  const url = `${endpoint}/storage/buckets/${bucketId}/files`;
+
+  try {
+    const res = await axios.post(url, form, {
       headers: {
         ...form.getHeaders(),
         "X-Appwrite-Project": project,
@@ -29,12 +51,18 @@ export async function uploadAvatar(file: Express.Multer.File): Promise<string> {
       },
       maxContentLength: Infinity,
       maxBodyLength: Infinity,
-    }
-  );
+      validateStatus: (status) => status >= 200 && status < 300,
+    });
 
-  return res.data.$id;
-}
-
-function normalizeV1(url: string) {
-  return url.endsWith("/v1") ? url : url.replace(/\/$/, "") + "/v1";
+    const returnedId = res.data.$id;
+    const viewUrl = `${endpoint}/storage/buckets/${bucketId}/files/${returnedId}/view?project=${project}`;
+    return { fileId: returnedId, url: viewUrl, raw: res.data };
+  } catch (err: any) {
+    const errBody = err?.response?.data ?? err.message;
+    throw new Error(`Appwrite upload failed: ${JSON.stringify(errBody)}`);
+  } finally {
+    try {
+      fs.unlinkSync(tempPath);
+    } catch {}
+  }
 }
