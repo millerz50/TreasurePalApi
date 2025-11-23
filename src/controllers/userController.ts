@@ -1,6 +1,6 @@
 // server/controllers/userController.ts
 import { Request, Response } from "express";
-import { uploadAvatar } from "../services/storageService";
+import { uploadToAppwriteBucket } from "../services/storageService";
 import {
   createUser,
   findByEmail,
@@ -38,7 +38,13 @@ export async function signup(req: Request, res: Response) {
     let avatarFileId: string | undefined;
     const file = (req as unknown as { file?: Express.Multer.File }).file;
     if (file) {
-      avatarFileId = await uploadAvatar(file);
+      // service expects (buffer, originalName) and returns { fileId, url, raw }
+      const result = await uploadToAppwriteBucket(
+        file.buffer,
+        file.originalname
+      );
+      avatarFileId =
+        result?.fileId ?? (typeof result === "string" ? result : undefined);
     }
 
     const payload = {
@@ -73,7 +79,7 @@ export async function loginUser(_req: Request, res: Response) {
 // Current user profile based on Appwrite accountId (from middleware)
 export async function getUserProfile(req: Request, res: Response) {
   try {
-    const accountId = req.accountId;
+    const accountId = (req as any).accountId;
     if (!accountId) return res.status(401).json({ error: "Unauthorized" });
 
     const profile = await getUserByAccountId(accountId);
