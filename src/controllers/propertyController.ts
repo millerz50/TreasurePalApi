@@ -50,11 +50,18 @@ export async function createProperty(req: Request, res: Response) {
         .json({ error: "Only agents can create properties" });
 
     const body = { ...req.body, agentId: user.$id };
-    const property = await svcCreateProperty(
-      body,
-      req.file?.buffer,
-      req.file?.originalname
-    );
+
+    // Build imageFiles map if a file was uploaded
+    const imageFiles = req.file
+      ? {
+          frontElevation: {
+            buffer: req.file.buffer,
+            name: req.file.originalname,
+          },
+        }
+      : undefined;
+
+    const property = await svcCreateProperty(body, imageFiles);
     res.status(201).json(property);
   } catch (err: any) {
     res.status(400).json({ error: err.message });
@@ -76,11 +83,19 @@ export async function updateProperty(req: Request, res: Response) {
     if (user.role !== "admin" && existing.agentId !== user.$id)
       return res.status(403).json({ error: "Forbidden" });
 
+    const imageFiles = req.file
+      ? {
+          frontElevation: {
+            buffer: req.file.buffer,
+            name: req.file.originalname,
+          },
+        }
+      : undefined;
+
     const updated = await svcUpdateProperty(
       req.params.id,
       req.body,
-      req.file?.buffer,
-      req.file?.originalname
+      imageFiles
     );
     res.json(updated);
   } catch (err: any) {

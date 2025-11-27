@@ -1,18 +1,43 @@
-// server/services/propertyService.ts
-import { Client, Databases, ID } from "node-appwrite";
+import { Client, ID, Query, Storage, TablesDB } from "node-appwrite";
+
 import { uploadToAppwriteBucket } from "../lib/uploadToAppwrite";
+
+function getPreviewUrl(fileId: string | null): string | null {
+  if (!fileId) return null;
+
+  const endpointRaw = process.env.APPWRITE_ENDPOINT!;
+  const endpoint = endpointRaw.endsWith("/v1")
+    ? endpointRaw.replace(/\/$/, "")
+    : endpointRaw.replace(/\/$/, "") + "/v1";
+
+  const bucketId = process.env.APPWRITE_BUCKET_ID!;
+  const projectId = process.env.APPWRITE_PROJECT_ID!;
+
+  // Use preview route if you want thumbnails; use view for original
+  return `${endpoint}/storage/buckets/${bucketId}/files/${fileId}/preview?project=${projectId}`;
+  // Or: `${endpoint}/storage/buckets/${bucketId}/files/${fileId}/view?project=${projectId}`;
+}
 
 const client = new Client()
   .setEndpoint(process.env.APPWRITE_ENDPOINT!)
   .setProject(process.env.APPWRITE_PROJECT_ID!)
   .setKey(process.env.APPWRITE_API_KEY!);
 
-const databases = new Databases(client);
+const tablesDB = new TablesDB(client);
+const storage = new Storage(client);
 
 const DB_ID = process.env.APPWRITE_DATABASE_ID!;
-const PROPERTIES_COLLECTION =
+const PROPERTIES_TABLE =
   process.env.APPWRITE_PROPERTIES_COLLECTION_ID || "properties";
-const USERS_COLLECTION = process.env.APPWRITE_USERS_COLLECTION_ID || "users";
+const USERS_TABLE = process.env.APPWRITE_USERS_COLLECTION_ID || "users";
+
+const IMAGE_KEYS = [
+  "frontElevation",
+  "southView",
+  "westView",
+  "eastView",
+  "floorPlan",
+] as const;
 
 function toCsv(value: any): string {
   if (!value) return "";
@@ -52,70 +77,88 @@ function parseCoordinates(value: any): {
   }
   return {};
 }
-function formatProperty(doc: any) {
-  return {
-    $id: doc.$id,
-    title: doc.title,
-    price: doc.price,
-    location: doc.location,
-    address: doc.address,
-    rooms: typeof doc.rooms === "number" ? doc.rooms : Number(doc.rooms || 0),
-    description: doc.description || "",
-    type: doc.type || "",
-    status: doc.status || "pending",
-    country: doc.country || "",
-    amenities: fromCsv(doc.amenities),
-    locationLat: doc.locationLat !== undefined ? Number(doc.locationLat) : null,
-    locationLng: doc.locationLng !== undefined ? Number(doc.locationLng) : null,
-    agentId: doc.agentId,
-    images: Array.isArray(doc.images)
-      ? doc.images
-      : doc.images
-      ? fromCsv(doc.images)
-      : [],
-    imageUrl: doc.imageUrl || null,
-    published: !!doc.published,
-    approvedBy: doc.approvedBy || null,
-    approvedAt: doc.approvedAt || null,
-    createdAt: doc.$createdAt,
-    updatedAt: doc.$updatedAt,
-  };
-}
 
+function formatProperty(row: any) {
+  const base = {
+    $id: row.$id,
+    title: row.title,
+    price: row.price,
+    location: row.location,
+    address: row.address,
+    rooms: typeof row.rooms === "number" ? row.rooms : Number(row.rooms || 0),
+    description: row.description || "",
+    type: row.type || "",
+    status: row.status || "pending",
+    country: row.country || "",
+    amenities: fromCsv(row.amenities),
+    locationLat: row.locationLat !== undefined ? Number(row.locationLat) : null,
+    locationLng: row.locationLng !== undefined ? Number(row.locationLng) : null,
+    agentId: row.agentId,
+    published: !!row.published,
+    approvedBy: row.approvedBy || null,
+    approvedAt: row.approvedAt || null,
+    createdAt: row.$createdAt,
+    updatedAt: row.$updatedAt,
+  };
+
+  const images: Record<
+    string,
+    { fileId: string | null; previewUrl: string | null }
+  > = {};
+
+  IMAGE_KEYS.forEach((key) => {
+    const fileId = row[key] || null;
+    images[key] = {
+      fileId,
+      previewUrl: getPreviewUrl(fileId),
+    };
+  });
+
+  return { ...base, images };
+}
 export async function listProperties(limit = 100) {
-  const res = await databases.listDocuments(
+  const res = await tablesDB.listRows(
     DB_ID,
-    PROPERTIES_COLLECTION,
+    PROPERTIES_TABLE,
     [],
     String(limit)
   );
-  return res.documents.map(formatProperty);
+  return res.rows.map(formatProperty);
 }
 
 export async function getPropertyById(id: string) {
-  const doc = await databases.getDocument(DB_ID, PROPERTIES_COLLECTION, id);
-  return formatProperty(doc);
+  const row = await tablesDB.getRow(DB_ID, PROPERTIES_TABLE, id);
+  return formatProperty(row);
 }
 
 export async function createProperty(
   payload: any,
-  imageBuffer?: Buffer,
-  imageName?: string
+  imageFiles?: Record<string, { buffer: Buffer; name: string }>
 ) {
-  // validate agent exists and is agent role
-  const agentId = String(payload.agentId);
-  const agentDoc = await databases
-    .getDocument(DB_ID, USERS_COLLECTION, agentId)
-    .catch(() => null);
+  const agentRes = await tablesDB.listRows(DB_ID, USERS_TABLE, [
+    Query.equal("$id", String(payload.agentId)),
+  ]);
+  const agentDoc = agentRes.total > 0 ? agentRes.rows[0] : null;
   if (!agentDoc || agentDoc.role !== "agent")
     throw new Error("Invalid agentId or user is not an agent");
 
-  let imageUrl: string | null = null;
-  if (imageBuffer && imageName) {
-    imageUrl = await uploadToAppwriteBucket(imageBuffer, imageName);
+  const coords = parseCoordinates(payload.coordinates);
+
+  const imageIds: Record<string, string | null> = {};
+  if (imageFiles) {
+    for (const key of IMAGE_KEYS) {
+      if (imageFiles[key]) {
+        const { fileId } = await uploadToAppwriteBucket(
+          imageFiles[key].buffer,
+          imageFiles[key].name
+        );
+        imageIds[key] = fileId;
+      } else {
+        imageIds[key] = null;
+      }
+    }
   }
 
-  const coords = parseCoordinates(payload.coordinates);
   const record: any = {
     title: payload.title,
     price: payload.price,
@@ -128,39 +171,42 @@ export async function createProperty(
     country: payload.country || "",
     amenities: toCsv(payload.amenities),
     ...coords,
-    agentId,
-    images: payload.images
-      ? Array.isArray(payload.images)
-        ? payload.images.join(",")
-        : String(payload.images)
-      : undefined,
-    imageUrl,
+    agentId: String(payload.agentId),
     published: false,
     approvedBy: null,
     approvedAt: null,
+    ...imageIds,
   };
 
-  const doc = await databases.createDocument(
+  const row = await tablesDB.createRow(
     DB_ID,
-    PROPERTIES_COLLECTION,
+    PROPERTIES_TABLE,
     ID.unique(),
     record
   );
-  return formatProperty(doc);
+  return formatProperty(row);
 }
 
 export async function updateProperty(
   id: string,
   updates: any,
-  imageBuffer?: Buffer,
-  imageName?: string
+  imageFiles?: Record<string, { buffer: Buffer; name: string }>
 ) {
-  // optional: verify ownership/admin outside or inside this function as required
-  let imageUrl: string | null = null;
-  if (imageBuffer && imageName)
-    imageUrl = await uploadToAppwriteBucket(imageBuffer, imageName);
-
   const coords = parseCoordinates(updates.coordinates);
+
+  const imageIds: Record<string, string | undefined> = {};
+  if (imageFiles) {
+    for (const key of IMAGE_KEYS) {
+      if (imageFiles[key]) {
+        const { fileId } = await uploadToAppwriteBucket(
+          imageFiles[key].buffer,
+          imageFiles[key].name
+        );
+        imageIds[key] = fileId;
+      }
+    }
+  }
+
   const payload: any = {
     ...(updates.title !== undefined && { title: updates.title }),
     ...(updates.price !== undefined && { price: updates.price }),
@@ -178,24 +224,19 @@ export async function updateProperty(
     }),
     ...coords,
     ...(updates.agentId !== undefined && { agentId: String(updates.agentId) }),
-    ...(updates.images !== undefined && {
-      images: Array.isArray(updates.images)
-        ? updates.images.join(",")
-        : String(updates.images),
-    }),
-    ...(imageUrl && { imageUrl }),
+    ...imageIds,
   };
 
-  const doc = await databases.updateDocument(
-    DB_ID,
-    PROPERTIES_COLLECTION,
-    id,
-    payload
-  );
-  return formatProperty(doc);
+  const row = await tablesDB.updateRow(DB_ID, PROPERTIES_TABLE, id, payload);
+  return formatProperty(row);
 }
 
 export async function deleteProperty(id: string) {
-  await databases.deleteDocument(DB_ID, PROPERTIES_COLLECTION, id);
-  return;
+  const row = await tablesDB.getRow(DB_ID, PROPERTIES_TABLE, id);
+  for (const key of IMAGE_KEYS) {
+    if (row[key]) {
+      await storage.deleteFile(process.env.APPWRITE_BUCKET_ID!, row[key]);
+    }
+  }
+  await tablesDB.deleteRow(DB_ID, PROPERTIES_TABLE, id);
 }

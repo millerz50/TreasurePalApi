@@ -6,7 +6,7 @@ import { saveTempFile } from "./saveTempFile";
 export async function uploadToAppwriteBucket(
   buffer: Buffer,
   filename: string
-): Promise<string> {
+): Promise<{ fileId: string; previewUrl: string }> {
   const tempPath = await saveTempFile(buffer, filename);
   const fileStream = fs.createReadStream(tempPath);
 
@@ -15,7 +15,7 @@ export async function uploadToAppwriteBucket(
   form.append("file", fileStream, filename);
 
   const response = await fetch(
-    `${process.env.APPWRITE_ENDPOINT}/storage/buckets/agents-bucket/files`,
+    `${process.env.APPWRITE_ENDPOINT}/storage/buckets/${process.env.APPWRITE_BUCKET_ID}/files`,
     {
       method: "POST",
       headers: {
@@ -33,5 +33,8 @@ export async function uploadToAppwriteBucket(
 
   if (!response.ok) throw new Error(result.message || "Upload failed");
 
-  return `${process.env.APPWRITE_ENDPOINT}/storage/buckets/agents-bucket/files/${result.$id}/view?project=${process.env.APPWRITE_PROJECT_ID}`;
+  const fileId = result.$id;
+  const previewUrl = `${process.env.APPWRITE_ENDPOINT}/storage/buckets/${process.env.APPWRITE_BUCKET_ID}/files/${fileId}/view?project=${process.env.APPWRITE_PROJECT_ID}`;
+
+  return { fileId, previewUrl };
 }

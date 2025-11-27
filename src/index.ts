@@ -1,3 +1,4 @@
+// server.ts
 import dotenv from "dotenv";
 dotenv.config({
   path: process.env.NODE_ENV === "production" ? ".env" : ".env.local",
@@ -50,6 +51,8 @@ const allowedOrigins = [
   "https://treasure-pal.vercel.app",
   "https://www.treasurepal.co.zw",
   "https://www.treasurepal.com",
+  "https://www.treasureprops.com", // ✅ production domain
+  "https://www.treasureprops.co.zw", // ✅ regional domain
 ];
 
 const corsOptions = {
@@ -60,7 +63,7 @@ const corsOptions = {
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      callback(new Error("Not allowed by CORS"));
+      callback(new Error(`Not allowed by CORS: ${origin}`));
     }
   },
   credentials: true,
@@ -96,9 +99,6 @@ const limiter = rateLimit({
   max: 100,
   standardHeaders: true,
   legacyHeaders: false,
-  validate: {
-    trustProxy: false,
-  },
 });
 
 app.use("/api", limiter);
@@ -110,6 +110,7 @@ app.use("/api/properties", propertiesRoutes);
 app.use("/api/dashboard", dashboardRouter);
 app.use("/api/users", userRoutes);
 app.use("/api/storage", storageRoutes);
+
 //
 // ✅ Health Check (Appwrite Ping)
 //

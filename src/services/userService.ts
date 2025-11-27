@@ -31,7 +31,6 @@ export interface UserRow {
   status?: string;
   nationalId?: string | null;
   bio?: string | null;
-  avatarFileId?: string | null;
   metadata?: string[];
   [key: string]: unknown;
 }
@@ -110,7 +109,6 @@ export async function signupUser(payload: {
   status?: string;
   nationalId?: string;
   bio?: string;
-  avatarFileId?: string;
   metadata?: string[];
 }) {
   try {
@@ -131,12 +129,9 @@ export async function signupUser(payload: {
       phone: payload.phone ?? null,
       role: payload.role ?? "user",
       status: payload.status ?? "Active",
-      // NOTE: If your schema currently requires password column, keep it,
-      // but you should remove that requirement and stop storing passwords in tables.
       password: payload.password, // Ideally remove from schema ASAP
       nationalId: payload.nationalId ?? null,
       bio: payload.bio ?? null,
-      avatarFileId: payload.avatarFileId ?? null,
       metadata: payload.metadata ?? [],
     });
 
