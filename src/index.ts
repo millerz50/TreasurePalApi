@@ -21,10 +21,13 @@ import propertiesRoutes from "./routes/propertyRoutes";
 import storageRoutes from "./routes/storageRoutes";
 import userRoutes from "./routes/userRoutes";
 
+import agentsRoutes from "./routes/userRoutes";
+
 const PORT = parseInt(process.env.PORT || "4011", 10);
 const app = express();
 
 app.set("trust proxy", true);
+app.use("/api/agents", agentsRoutes);
 
 //
 // ✅ Appwrite Client Setup
