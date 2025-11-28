@@ -10,6 +10,7 @@ import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import morgan from "morgan";
 import { logger } from "./lib/logger";
+import blogRoutes from "./routes/blogsRoutes";
 import health from "./routes/health";
 
 // Appwrite SDK
@@ -109,7 +110,7 @@ app.use("/api/dashboard", dashboardRouter);
 app.use("/api/users", userRoutes);
 app.use("/api/storage", storageRoutes);
 app.use("/api/agents", agentsRoutes); // only if you create a dedicated agentsRoutes.ts
-app.use("/api/blogs", agentsRoutes);
+app.use("/api/blogs", blogRoutes);
 //
 // ✅ Health Check
 //
