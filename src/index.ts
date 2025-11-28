@@ -72,6 +72,7 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
+app.options("*", cors(corsOptions)); // ✅ Handle preflight requests globally
 
 //
 // ✅ Body Parsing
