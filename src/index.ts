@@ -5,7 +5,6 @@ dotenv.config({
 });
 
 import compression from "compression";
-import cors from "cors";
 import express, { NextFunction, Request, Response } from "express";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
@@ -54,26 +53,6 @@ const allowedOrigins = [
   "https://www.treasureprops.com", // ✅ production domain
   "https://www.treasureprops.co.zw", // ✅ regional domain
 ];
-
-const corsOptions = {
-  origin: (
-    origin: string | undefined,
-    callback: (err: Error | null, allow?: boolean) => void
-  ) => {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error(`Not allowed by CORS: ${origin}`));
-    }
-  },
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-};
-
-app.use(cors(corsOptions));
-// ✅ FIX: use "/*" instead of "*" to avoid path-to-regexp error
-app.options("/*", cors(corsOptions));
 
 //
 // ✅ Body Parsing
