@@ -1,10 +1,10 @@
-// server.ts
 import dotenv from "dotenv";
 dotenv.config({
   path: process.env.NODE_ENV === "production" ? ".env" : ".env.local",
 });
 
 import compression from "compression";
+import cors from "cors";
 import express, { NextFunction, Request, Response } from "express";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
@@ -20,14 +20,13 @@ import dashboardRouter from "./routes/dashboard";
 import propertiesRoutes from "./routes/propertyRoutes";
 import storageRoutes from "./routes/storageRoutes";
 import userRoutes from "./routes/userRoutes";
-
-import agentsRoutes from "./routes/userRoutes";
+// ✅ If you want agents separately, create ./routes/agentsRoutes.ts
+import agentsRoutes from "./routes/agentRoutes";
 
 const PORT = parseInt(process.env.PORT || "4011", 10);
 const app = express();
 
 app.set("trust proxy", true);
-app.use("/api/agents", agentsRoutes);
 
 //
 // ✅ Appwrite Client Setup
@@ -52,10 +51,25 @@ const allowedOrigins = [
   "http://localhost:3000",
   "https://treasure-pal.vercel.app",
   "https://www.treasurepal.co.zw",
+  "https://treasurepal.co.zw",
   "https://www.treasurepal.com",
-  "https://www.treasureprops.com", // ✅ production domain
-  "https://www.treasureprops.co.zw", // ✅ regional domain
+  "https://www.treasureprops.com",
+  "https://treasureprops.com",
+  "https://www.treasureprops.co.zw",
 ];
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error(`Not allowed by CORS: ${origin}`));
+      }
+    },
+    credentials: true,
+  })
+);
 
 //
 // ✅ Body Parsing
@@ -94,9 +108,10 @@ app.use("/api/properties", propertiesRoutes);
 app.use("/api/dashboard", dashboardRouter);
 app.use("/api/users", userRoutes);
 app.use("/api/storage", storageRoutes);
+app.use("/api/agents", agentsRoutes); // only if you create a dedicated agentsRoutes.ts
 
 //
-// ✅ Health Check (Appwrite Ping)
+// ✅ Health Check
 //
 app.use("/api/health", health);
 
