@@ -109,7 +109,7 @@ app.use("/api/dashboard", dashboardRouter);
 app.use("/api/users", userRoutes);
 app.use("/api/storage", storageRoutes);
 app.use("/api/agents", agentsRoutes); // only if you create a dedicated agentsRoutes.ts
-
+app.use("/api/blogs", agentsRoutes);
 //
 // ✅ Health Check
 //
