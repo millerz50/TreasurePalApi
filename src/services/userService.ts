@@ -1,4 +1,3 @@
-// server/services/userService.ts
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const { Client, ID, Query, TablesDB, Users } = require("node-appwrite");
 
@@ -154,7 +153,7 @@ export async function updateUser(
   updates: Record<string, unknown>
 ) {
   try {
-    if ("password" in updates) delete (updates as any).password; // don’t allow password updates via table
+    if ("password" in updates) delete (updates as any).password;
     const row = await tablesDB.updateRow(DB_ID, USERS_TABLE, userId, updates);
     return safeFormat(row);
   } catch (err: unknown) {
@@ -207,5 +206,23 @@ export async function findByEmail(email: string) {
   } catch (err: unknown) {
     logError("findByEmail", err, { email });
     return null;
+  }
+}
+
+// 🔎 List agents (users with role="agent")
+export async function listAgents(limit = 100, offset = 0) {
+  try {
+    const res = await tablesDB.listRows(
+      DB_ID,
+      USERS_TABLE,
+      [Query.equal("role", "agent")],
+      String(limit)
+    );
+    const rows = Array.isArray(res.rows) ? res.rows : [];
+    const agentsList = rows.slice(offset, offset + limit).map(safeFormat);
+    return { total: res.total ?? agentsList.length, agents: agentsList };
+  } catch (err: unknown) {
+    logError("listAgents", err, { limit, offset });
+    return { total: 0, agents: [] };
   }
 }

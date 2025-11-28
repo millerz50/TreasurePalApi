@@ -72,7 +72,8 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-app.options("*", cors(corsOptions)); // ✅ Handle preflight requests globally
+// ✅ FIX: use "/*" instead of "*" to avoid path-to-regexp error
+app.options("/*", cors(corsOptions));
 
 //
 // ✅ Body Parsing
@@ -115,7 +116,7 @@ app.use("/api/storage", storageRoutes);
 //
 // ✅ Health Check (Appwrite Ping)
 //
-app.use("/api/", health);
+app.use("/api/health", health);
 
 //
 // ✅ Error Handler

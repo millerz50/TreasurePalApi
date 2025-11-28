@@ -4,6 +4,7 @@ import multer from "multer";
 import {
   deleteUser,
   editUser,
+  getAgents,
   getAllUsers,
   getUserById,
   getUserProfile,
@@ -28,9 +29,10 @@ router.put("/:id", editUser);
 router.delete("/:id", deleteUser);
 
 router.get("/", getAllUsers);
+router.get("/agents", getAgents); // 👈 new route
 router.get("/:id", getUserById);
 router.patch("/:id/role", setRole);
 router.patch("/:id/status", setStatus);
-router.put("/:id", updateUser); // keep if you want full replace
+router.put("/:id", updateUser);
 
 export default router;

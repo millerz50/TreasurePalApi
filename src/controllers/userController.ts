@@ -7,6 +7,7 @@ import {
   getUserByAccountId,
   deleteUser as svcDeleteUser,
   getUserById as svcGetUserById,
+  listAgents as svcListAgents,
   listUsers as svcListUsers,
   setRole as svcSetRole,
   setStatus as svcSetStatus,
@@ -38,7 +39,6 @@ export async function signup(req: Request, res: Response) {
     let avatarFileId: string | undefined;
     const file = (req as unknown as { file?: Express.Multer.File }).file;
     if (file) {
-      // service expects (buffer, originalName) and returns { fileId, url, raw }
       const result = await uploadToAppwriteBucket(
         file.buffer,
         file.originalname
@@ -171,5 +171,17 @@ export async function setStatus(req: Request, res: Response) {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Set status failed";
     res.status(400).json({ error: message });
+  }
+}
+
+// ✅ Corrected getAgents for Appwrite
+export async function getAgents(_req: Request, res: Response) {
+  try {
+    const agents = await svcListAgents(); // service queries Appwrite for role="agent"
+    res.json(agents);
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "Failed to fetch agents";
+    res.status(500).json({ error: message });
   }
 }
