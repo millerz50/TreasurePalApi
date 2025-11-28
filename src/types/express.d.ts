@@ -12,4 +12,20 @@ declare global {
   }
 }
 
+// types/express.d.ts
+import { UserRole } from "../services/blogService"; // or wherever you define roles
+
+declare global {
+  namespace Express {
+    interface User {
+      id: string;
+      role: UserRole; // "user" | "agent" | "admin"
+    }
+
+    interface Request {
+      user?: User; // optional, since middleware attaches it
+    }
+  }
+}
+
 export {};
