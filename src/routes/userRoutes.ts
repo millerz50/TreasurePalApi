@@ -1,6 +1,4 @@
-// server/routes/userRoutes.ts
 import express from "express";
-import multer from "multer";
 import {
   deleteUser,
   editUser,
@@ -17,9 +15,9 @@ import {
 import { authMiddleware } from "../middleware/authMiddleware";
 
 const router = express.Router();
-const upload = multer({ storage: multer.memoryStorage() });
 
-router.post("/signup", upload.single("avatar"), signup);
+// 🚀 Signup now only expects JSON body, no avatar upload required
+router.post("/signup", signup);
 router.post("/login", loginUser);
 
 // 🔑 Current user (requires accountId via middleware)
@@ -29,7 +27,7 @@ router.put("/:id", editUser);
 router.delete("/:id", deleteUser);
 
 router.get("/", getAllUsers);
-router.get("/agents", getAgents); // 👈 new route
+router.get("/agents", getAgents);
 router.get("/:id", getUserById);
 router.patch("/:id/role", setRole);
 router.patch("/:id/status", setStatus);
