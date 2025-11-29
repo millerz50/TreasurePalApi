@@ -1,5 +1,12 @@
-import { Client, ID, Query, Storage, TablesDB } from "node-appwrite";
-
+import {
+  Client,
+  ID,
+  Permission,
+  Query,
+  Role,
+  Storage,
+  TablesDB,
+} from "node-appwrite";
 import { uploadToAppwriteBucket } from "../lib/uploadToAppwrite";
 
 function getPreviewUrl(fileId: string | null): string | null {
@@ -13,9 +20,7 @@ function getPreviewUrl(fileId: string | null): string | null {
   const bucketId = process.env.APPWRITE_BUCKET_ID!;
   const projectId = process.env.APPWRITE_PROJECT_ID!;
 
-  // Use preview route if you want thumbnails; use view for original
   return `${endpoint}/storage/buckets/${bucketId}/files/${fileId}/preview?project=${projectId}`;
-  // Or: `${endpoint}/storage/buckets/${bucketId}/files/${fileId}/view?project=${projectId}`;
 }
 
 const client = new Client()
@@ -49,6 +54,7 @@ function toCsv(value: any): string {
       .join(",");
   return String(value).trim();
 }
+
 function fromCsv(value: any): string[] {
   if (!value) return [];
   return String(value)
@@ -56,6 +62,7 @@ function fromCsv(value: any): string[] {
     .map((s) => s.trim())
     .filter(Boolean);
 }
+
 function parseCoordinates(value: any): {
   locationLat?: number;
   locationLng?: number;
@@ -105,17 +112,14 @@ function formatProperty(row: any) {
     string,
     { fileId: string | null; previewUrl: string | null }
   > = {};
-
   IMAGE_KEYS.forEach((key) => {
     const fileId = row[key] || null;
-    images[key] = {
-      fileId,
-      previewUrl: getPreviewUrl(fileId),
-    };
+    images[key] = { fileId, previewUrl: getPreviewUrl(fileId) };
   });
 
   return { ...base, images };
 }
+
 export async function listProperties(limit = 100) {
   const res = await tablesDB.listRows(
     DB_ID,
@@ -178,11 +182,22 @@ export async function createProperty(
     ...imageIds,
   };
 
+  // ✅ Permissions: agent + optional public + admins team
+  const permissions = [
+    Permission.read(Role.user(payload.agentId)),
+    Permission.update(Role.user(payload.agentId)),
+    Permission.delete(Role.user(payload.agentId)),
+    Permission.read(Role.any()), // optional: allow public read
+    Permission.update(Role.team("admins")), // if you have an "admins" team
+    Permission.delete(Role.team("admins")),
+  ];
+
   const row = await tablesDB.createRow(
     DB_ID,
     PROPERTIES_TABLE,
     ID.unique(),
-    record
+    record,
+    permissions
   );
   return formatProperty(row);
 }
