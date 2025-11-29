@@ -111,11 +111,11 @@ export async function signupUser(payload: {
   metadata?: string[];
 }) {
   try {
-    // 1. Create auth user (Appwrite)
-    const authUser = await users.create(ID.unique(), payload.email);
-    await users.updatePassword(authUser.$id, payload.password);
-    await users.updateName(
-      authUser.$id,
+    // 1. Create auth user (Appwrite) with email + password + name
+    const authUser = await users.create(
+      ID.unique(),
+      payload.email,
+      payload.password,
       `${payload.firstName} ${payload.surname}`
     );
 
@@ -128,7 +128,7 @@ export async function signupUser(payload: {
       phone: payload.phone ?? null,
       role: payload.role ?? "user",
       status: payload.status ?? "Active",
-      password: payload.password, // Ideally remove from schema ASAP
+      password: payload.password, // ⚠️ Ideally remove from schema ASAP
       nationalId: payload.nationalId ?? null,
       bio: payload.bio ?? null,
       metadata: payload.metadata ?? [],
