@@ -14,7 +14,7 @@ import {
   updateUser as svcUpdateUser,
 } from "../services/userService";
 
-// Signup handled by server: creates Appwrite auth user + profile row
+// 🆕 Signup handled by server: creates Appwrite auth user + profile row
 export async function signup(req: Request, res: Response) {
   try {
     const {
@@ -69,14 +69,14 @@ export async function signup(req: Request, res: Response) {
   }
 }
 
-// Login is client-side via Appwrite SDK
+// 🔑 Login is client-side via Appwrite SDK
 export async function loginUser(_req: Request, res: Response) {
   res
     .status(501)
     .json({ error: "Login handled by Appwrite Accounts; use client SDK" });
 }
 
-// Current user profile based on Appwrite accountId (from middleware)
+// 👤 Current user profile based on Appwrite accountId (from middleware)
 export async function getUserProfile(req: Request, res: Response) {
   try {
     const accountId = (req as any).accountId;
@@ -91,6 +91,7 @@ export async function getUserProfile(req: Request, res: Response) {
   }
 }
 
+// ✏️ Edit user (excluding role/status)
 export async function editUser(req: Request, res: Response) {
   try {
     const targetId = req.params.id;
@@ -106,6 +107,7 @@ export async function editUser(req: Request, res: Response) {
   }
 }
 
+// ❌ Delete user
 export async function deleteUser(req: Request, res: Response) {
   try {
     const targetId = req.params.id;
@@ -117,6 +119,7 @@ export async function deleteUser(req: Request, res: Response) {
   }
 }
 
+// 📋 List all users
 export async function getAllUsers(req: Request, res: Response) {
   try {
     const limit = Number(req.query.limit ?? 100);
@@ -128,6 +131,7 @@ export async function getAllUsers(req: Request, res: Response) {
   }
 }
 
+// 🔎 Get user by ID
 export async function getUserById(req: Request, res: Response) {
   try {
     const user = await svcGetUserById(req.params.id);
@@ -139,6 +143,7 @@ export async function getUserById(req: Request, res: Response) {
   }
 }
 
+// ✏️ Update user
 export async function updateUser(req: Request, res: Response) {
   try {
     const updates = req.body;
@@ -150,6 +155,7 @@ export async function updateUser(req: Request, res: Response) {
   }
 }
 
+// 🔧 Set role
 export async function setRole(req: Request, res: Response) {
   try {
     const { role } = req.body;
@@ -162,6 +168,7 @@ export async function setRole(req: Request, res: Response) {
   }
 }
 
+// 🔧 Set status
 export async function setStatus(req: Request, res: Response) {
   try {
     const { status } = req.body;
@@ -174,10 +181,10 @@ export async function setStatus(req: Request, res: Response) {
   }
 }
 
-// ✅ Corrected getAgents for Appwrite
+// 👥 List agents
 export async function getAgents(_req: Request, res: Response) {
   try {
-    const agents = await svcListAgents(); // service queries Appwrite for role="agent"
+    const agents = await svcListAgents();
     res.json(agents);
   } catch (err) {
     const message =
