@@ -115,7 +115,8 @@ export async function signupUser(payload: {
     let phone: string | null = null;
     if (payload.phone) {
       const normalized = payload.phone.trim();
-      if (/^\+[1-9]\d{1,14}$/.test(normalized)) {
+      // Require + followed by 8–15 digits
+      if (/^\+[1-9]\d{7,14}$/.test(normalized)) {
         phone = normalized;
       }
     }
