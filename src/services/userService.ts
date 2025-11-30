@@ -114,14 +114,14 @@ export async function signupUser(payload: {
     // ✅ Normalize phone to E.164 or null
     let phone: string | null = null;
     if (payload.phone) {
-      const normalized = payload.phone.trim();
-      const e164Regex = /^\+[1-9]\d{7,14}$/; // E.164: + followed by 8–15 digits
+      // Trim and remove all spaces
+      const normalized = payload.phone.replace(/\s+/g, "").trim();
+      const e164Regex = /^\+[1-9]\d{7,14}$/;
       if (e164Regex.test(normalized)) {
         phone = normalized;
-      } else {
-        phone = null; // fallback if invalid
       }
     }
+
     console.log("Phone being sent to Appwrite:", JSON.stringify(payload.phone));
 
     // 1. Create auth user (Appwrite) with email + password + name + phone
