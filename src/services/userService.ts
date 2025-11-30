@@ -113,8 +113,11 @@ export async function signupUser(payload: {
   try {
     // ✅ Normalize phone to E.164 or null
     let phone: string | null = null;
-    if (payload.phone && /^\+[1-9]\d{1,14}$/.test(payload.phone)) {
-      phone = payload.phone;
+    if (payload.phone) {
+      const normalized = payload.phone.trim();
+      if (/^\+[1-9]\d{1,14}$/.test(normalized)) {
+        phone = normalized;
+      }
     }
 
     // 1. Create auth user (Appwrite) with email + password + name + phone
