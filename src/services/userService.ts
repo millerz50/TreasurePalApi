@@ -122,6 +122,7 @@ export async function signupUser(payload: {
         phone = null; // fallback if invalid
       }
     }
+    console.log("Phone being sent to Appwrite:", JSON.stringify(payload.phone));
 
     // 1. Create auth user (Appwrite) with email + password + name + phone
     const authUser = await users.create(
