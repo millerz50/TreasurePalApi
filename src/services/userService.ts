@@ -111,23 +111,13 @@ export async function signupUser(payload: {
   metadata?: string[];
 }) {
   try {
-    // ✅ Normalize phone to E.164 or null
-    let phone: string | null = null;
-    if (payload.phone) {
-      const normalized = payload.phone.trim();
-      // Require + followed by 8–15 digits
-      if (/^\+[1-9]\d{7,14}$/.test(normalized)) {
-        phone = normalized;
-      }
-    }
-
     // 1. Create auth user (Appwrite) with email + password + name + phone
     const authUser = await users.create(
       ID.unique(),
       payload.email,
       payload.password,
       `${payload.firstName} ${payload.surname}`,
-      phone
+      payload.phone ?? null // ✅ pass phone directly, no validation
     );
 
     // 2. Create profile row linked to auth user
@@ -136,7 +126,7 @@ export async function signupUser(payload: {
       email: payload.email.toLowerCase(),
       firstName: payload.firstName,
       surname: payload.surname,
-      phone, // ✅ stored as E.164 or null
+      phone: payload.phone ?? null, // ✅ stored as provided
       role: payload.role ?? "user",
       status: payload.status ?? "Active",
       password: payload.password, // ⚠️ Ideally remove from schema ASAP

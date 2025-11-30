@@ -23,7 +23,7 @@ export async function signup(req: Request, res: Response) {
       firstName,
       surname,
       role = "user",
-      phone,
+      phone, // ✅ just pass through, no validation
       nationalId,
       bio,
       metadata,
@@ -53,7 +53,7 @@ export async function signup(req: Request, res: Response) {
       firstName,
       surname,
       role,
-      phone,
+      phone, // ✅ passed directly
       nationalId,
       bio,
       avatarFileId,
