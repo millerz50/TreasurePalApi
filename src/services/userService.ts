@@ -102,7 +102,6 @@ export async function signupUser(payload: {
   password: string;
   firstName: string;
   surname: string;
-  phone?: string;
   role?: string;
   status?: string;
   nationalId?: string;
