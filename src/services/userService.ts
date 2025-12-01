@@ -111,35 +111,23 @@ export async function signupUser(payload: {
   metadata?: string[];
 }) {
   try {
-    // ✅ Normalize phone to E.164 or null
-    let phone: string | null = null;
-    if (payload.phone) {
-      // Trim and remove all spaces
-      const normalized = payload.phone.replace(/\s+/g, "").trim();
-      const e164Regex = /^\+[1-9]\d{7,14}$/;
-      if (e164Regex.test(normalized)) {
-        phone = normalized;
-      }
-    }
-
-    console.log("Phone being sent to Appwrite:", JSON.stringify(payload.phone));
-
-    // 1. Create auth user (Appwrite) with email + password + name + phone
+    // 1. Create auth user (Appwrite) with email + password + name
+    // 🚫 Do not send phone to Appwrite
     const authUser = await users.create(
       ID.unique(),
       payload.email,
       payload.password,
       `${payload.firstName} ${payload.surname}`,
-      phone
+      null
     );
 
-    // 2. Create profile row linked to auth user
+    // 2. Create profile row linked to auth user (store phone here)
     const row = await tablesDB.createRow(DB_ID, USERS_TABLE, ID.unique(), {
       accountid: authUser.$id,
       email: payload.email.toLowerCase(),
       firstName: payload.firstName,
       surname: payload.surname,
-      phone, // ✅ stored as normalized E.164 or null
+      phone: payload.phone ?? null, // ✅ stored only in your DB
       role: payload.role ?? "user",
       status: payload.status ?? "Active",
       password: payload.password, // ⚠️ Ideally remove from schema ASAP
