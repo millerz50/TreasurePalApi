@@ -91,7 +91,6 @@ async function signupUser(payload) {
             email: payload.email.toLowerCase(),
             firstName: payload.firstName,
             surname: payload.surname,
-            phone: payload.phone ?? null, // ✅ stored only in your DB
             role: payload.role ?? "user",
             status: payload.status ?? "Active",
             password: payload.password, // ⚠️ Ideally remove from schema ASAP
