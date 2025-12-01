@@ -121,7 +121,7 @@ export async function signupUser(payload: {
       null
     );
 
-    // 2. Create profile row linked to auth user (store phone here)
+    // 2. Create profile row linked to auth user (store phone here only)
     const row = await tablesDB.createRow(DB_ID, USERS_TABLE, ID.unique(), {
       accountid: authUser.$id,
       email: payload.email.toLowerCase(),
