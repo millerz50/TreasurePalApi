@@ -25,7 +25,6 @@ export interface UserRow {
   email?: string;
   firstName?: string;
   surname?: string;
-  phone?: string | null;
   role?: string;
   status?: string;
   nationalId?: string | null;
@@ -127,7 +126,6 @@ export async function signupUser(payload: {
       email: payload.email.toLowerCase(),
       firstName: payload.firstName,
       surname: payload.surname,
-      phone: payload.phone ?? null, // ✅ stored only in your DB
       role: payload.role ?? "user",
       status: payload.status ?? "Active",
       password: payload.password, // ⚠️ Ideally remove from schema ASAP
