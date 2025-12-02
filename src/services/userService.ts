@@ -125,8 +125,7 @@ export async function signupUser(payload: {
       ID.unique(),
       payload.email,
       payload.password,
-      `${payload.firstName} ${payload.surname}`,
-      null // 🚫 never send phone to Appwrite
+      `${payload.firstName} ${payload.surname}`
     );
 
     const row = await tablesDB.createRow(DB_ID, USERS_TABLE, ID.unique(), {
