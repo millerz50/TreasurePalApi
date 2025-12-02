@@ -3,13 +3,14 @@ import { Strategy as FacebookStrategy, Profile } from "passport-facebook";
 
 const FACEBOOK_APP_ID = process.env.FACEBOOK_APP_ID as string;
 const FACEBOOK_APP_SECRET = process.env.FACEBOOK_APP_SECRET as string;
+const FACEBOOK_CALLBACK_URL = process.env.FACEBOOK_CALLBACK_URL as string;
 
 passport.use(
   new FacebookStrategy(
     {
       clientID: FACEBOOK_APP_ID,
       clientSecret: FACEBOOK_APP_SECRET,
-      callbackURL: "/api/auth/facebook/callback",
+      callbackURL: FACEBOOK_CALLBACK_URL, // ✅ use env absolute URL
       profileFields: ["id", "emails", "name"],
     },
     (
