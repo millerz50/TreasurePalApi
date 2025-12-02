@@ -30,20 +30,20 @@ export interface UserRow {
   nationalId?: string | null;
   bio?: string | null;
   metadata?: string[];
-  phone?: string; // 🆕 store phone number (E.164 format)
-  country?: string; // 🆕 ISO country code or name
-  location?: string; // 🆕 free-text or structured location
-  avatarUrl?: string | null; // 🆕 optional profile picture
-  dateOfBirth?: string | null; // 🆕 ISO date string (YYYY-MM-DD)
-  createdAt?: string; // 🆕 timestamp for auditing
-  updatedAt?: string; // 🆕 timestamp for auditing
+  phone?: string;
+  country?: string;
+  location?: string;
+  avatarUrl?: string | null;
+  dateOfBirth?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
   [key: string]: unknown;
 }
 
 function safeFormat(row: unknown): UserRow | null {
   if (!row || typeof row !== "object") return null;
   const formatted = { ...(row as UserRow) };
-  delete (formatted as any).password; // never expose password in responses
+  delete (formatted as any).password;
   return formatted;
 }
 
@@ -75,7 +75,7 @@ export async function getUserById(userId: string): Promise<UserRow | null> {
   }
 }
 
-// 🔎 Get by linked auth user ID (Appwrite accountId)
+// 🔎 Get by linked auth user ID
 export async function getUserByAccountId(
   accountid: string
 ): Promise<UserRow | null> {
@@ -102,7 +102,7 @@ export async function listUsers(limit = 100, offset = 0) {
     return { total: 0, users: [] };
   }
 }
-// 🆕 Signup: create auth user + profile row
+
 // 🆕 Signup: create auth user + profile row
 export async function signupUser(payload: {
   email: string;
@@ -121,23 +121,20 @@ export async function signupUser(payload: {
   dateOfBirth?: string;
 }) {
   try {
-    // 1. Create auth user (Appwrite) with ONLY email + password + name
-    // 🚫 Do not send phone or extra fields to Appwrite
     const authUser = await users.create(
       ID.unique(),
       payload.email,
       payload.password,
       `${payload.firstName} ${payload.surname}`,
-      null // always null here
+      null // 🚫 never send phone to Appwrite
     );
 
-    // 2. Create profile row linked to auth user (store extended fields here)
     const row = await tablesDB.createRow(DB_ID, USERS_TABLE, ID.unique(), {
       accountid: authUser.$id,
       email: payload.email.toLowerCase(),
       firstName: payload.firstName,
       surname: payload.surname,
-      phone: payload.phone ?? null, // ✅ stored only in profile row
+      phone: payload.phone ?? null,
       country: payload.country ?? null,
       location: payload.location ?? null,
       role: payload.role ?? "user",
@@ -155,6 +152,26 @@ export async function signupUser(payload: {
     return { authUser, profile: safeFormat(row) };
   } catch (err: unknown) {
     logError("signupUser", err, { payload });
+    throw err;
+  }
+}
+
+// ✅ Alias for backwards compatibility
+export async function createUser(payload: Parameters<typeof signupUser>[0]) {
+  return signupUser(payload);
+}
+
+// ✏️ Update profile row
+export async function updateUser(
+  userId: string,
+  updates: Record<string, unknown>
+) {
+  try {
+    if ("password" in updates) delete (updates as any).password;
+    const row = await tablesDB.updateRow(DB_ID, USERS_TABLE, userId, updates);
+    return safeFormat(row);
+  } catch (err: unknown) {
+    logError("updateUser", err, { userId, updates });
     throw err;
   }
 }
@@ -206,7 +223,7 @@ export async function findByEmail(email: string) {
   }
 }
 
-// 🔎 List agents (users with role="agent")
+// 🔎 List agents
 export async function listAgents(limit = 100, offset = 0) {
   try {
     const res = await tablesDB.listRows(
