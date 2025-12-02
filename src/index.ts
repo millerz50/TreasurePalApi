@@ -137,6 +137,8 @@ app.use("/api/health", healthRoutes);
 //
 // ✅ OAuth Routes
 //
+
+// Google OAuth
 app.get(
   "/api/auth/google",
   passport.authenticate("google", { scope: ["profile", "email"] })
@@ -146,10 +148,12 @@ app.get(
   "/api/auth/google/callback",
   passport.authenticate("google", { failureRedirect: "/signin" }),
   (req: Request, res: Response) => {
-    res.redirect("https://treasure-pal.vercel.app/dashboard");
+    // Redirect to your frontend dashboard after successful login
+    res.redirect(`${process.env.CLIENT_URL}/dashboard`);
   }
 );
 
+// Facebook OAuth
 app.get(
   "/api/auth/facebook",
   passport.authenticate("facebook", { scope: ["email"] })
@@ -159,7 +163,8 @@ app.get(
   "/api/auth/facebook/callback",
   passport.authenticate("facebook", { failureRedirect: "/signin" }),
   (req: Request, res: Response) => {
-    res.redirect("https://treasure-pal.vercel.app/dashboard");
+    // Redirect to your frontend dashboard after successful login
+    res.redirect(`${process.env.CLIENT_URL}/dashboard`);
   }
 );
 
