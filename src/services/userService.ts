@@ -103,6 +103,7 @@ export async function listUsers(limit = 100, offset = 0) {
   }
 }
 // 🆕 Signup: create auth user + profile row
+// 🆕 Signup: create auth user + profile row
 export async function signupUser(payload: {
   email: string;
   password: string;
@@ -120,14 +121,14 @@ export async function signupUser(payload: {
   dateOfBirth?: string;
 }) {
   try {
-    // 1. Create auth user (Appwrite) with email + password + name
+    // 1. Create auth user (Appwrite) with ONLY email + password + name
     // 🚫 Do not send phone or extra fields to Appwrite
     const authUser = await users.create(
       ID.unique(),
       payload.email,
       payload.password,
       `${payload.firstName} ${payload.surname}`,
-      null
+      null // always null here
     );
 
     // 2. Create profile row linked to auth user (store extended fields here)
@@ -136,7 +137,7 @@ export async function signupUser(payload: {
       email: payload.email.toLowerCase(),
       firstName: payload.firstName,
       surname: payload.surname,
-      phone: payload.phone ?? null,
+      phone: payload.phone ?? null, // ✅ stored only in profile row
       country: payload.country ?? null,
       location: payload.location ?? null,
       role: payload.role ?? "user",
@@ -154,26 +155,6 @@ export async function signupUser(payload: {
     return { authUser, profile: safeFormat(row) };
   } catch (err: unknown) {
     logError("signupUser", err, { payload });
-    throw err;
-  }
-}
-
-// ✅ Alias for backwards compatibility
-export async function createUser(payload: Parameters<typeof signupUser>[0]) {
-  return signupUser(payload);
-}
-
-// ✏️ Update profile row
-export async function updateUser(
-  userId: string,
-  updates: Record<string, unknown>
-) {
-  try {
-    if ("password" in updates) delete (updates as any).password;
-    const row = await tablesDB.updateRow(DB_ID, USERS_TABLE, userId, updates);
-    return safeFormat(row);
-  } catch (err: unknown) {
-    logError("updateUser", err, { userId, updates });
     throw err;
   }
 }
