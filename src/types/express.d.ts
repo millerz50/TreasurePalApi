@@ -1,31 +1,24 @@
 // src/types/express.d.ts
-export interface AuthenticatedUser {
-  id: string;
-  role: string;
-}
-
-declare global {
-  namespace Express {
-    interface Request {
-      user?: AuthenticatedUser;
-    }
-  }
-}
-
-// types/express.d.ts
-import { UserRole } from "../services/blogService"; // or wherever you define roles
+import { Profile as FacebookProfile } from "passport-facebook";
+import { Profile as GoogleProfile } from "passport-google-oauth20";
+import { UserRole } from "../services/blogService";
 
 declare global {
   namespace Express {
     interface User {
       id: string;
-      role: UserRole; // "user" | "agent" | "admin"
+      email?: string;
+      role: UserRole;
+      profile?: FacebookProfile | GoogleProfile; // ✅ optional now
     }
 
     interface Request {
-      user?: User; // optional, since middleware attaches it
+      user?: User;
     }
   }
 }
 
-export {};
+export interface AuthenticatedUser {
+  id: string;
+  role: UserRole;
+}
