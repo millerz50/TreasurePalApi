@@ -30,6 +30,13 @@ export interface UserRow {
   nationalId?: string | null;
   bio?: string | null;
   metadata?: string[];
+  phone?: string; // 🆕 store phone number (E.164 format)
+  country?: string; // 🆕 ISO country code or name
+  location?: string; // 🆕 free-text or structured location
+  avatarUrl?: string | null; // 🆕 optional profile picture
+  dateOfBirth?: string | null; // 🆕 ISO date string (YYYY-MM-DD)
+  createdAt?: string; // 🆕 timestamp for auditing
+  updatedAt?: string; // 🆕 timestamp for auditing
   [key: string]: unknown;
 }
 
@@ -95,22 +102,26 @@ export async function listUsers(limit = 100, offset = 0) {
     return { total: 0, users: [] };
   }
 }
-
 // 🆕 Signup: create auth user + profile row
 export async function signupUser(payload: {
   email: string;
   password: string;
   firstName: string;
   surname: string;
+  phone?: string;
+  country?: string;
+  location?: string;
   role?: string;
   status?: string;
   nationalId?: string;
   bio?: string;
   metadata?: string[];
+  avatarUrl?: string;
+  dateOfBirth?: string;
 }) {
   try {
     // 1. Create auth user (Appwrite) with email + password + name
-    // 🚫 Do not send phone to Appwrite
+    // 🚫 Do not send phone or extra fields to Appwrite
     const authUser = await users.create(
       ID.unique(),
       payload.email,
@@ -119,18 +130,24 @@ export async function signupUser(payload: {
       null
     );
 
-    // 2. Create profile row linked to auth user (store phone here only)
+    // 2. Create profile row linked to auth user (store extended fields here)
     const row = await tablesDB.createRow(DB_ID, USERS_TABLE, ID.unique(), {
       accountid: authUser.$id,
       email: payload.email.toLowerCase(),
       firstName: payload.firstName,
       surname: payload.surname,
+      phone: payload.phone ?? null,
+      country: payload.country ?? null,
+      location: payload.location ?? null,
       role: payload.role ?? "user",
       status: payload.status ?? "Active",
-      password: payload.password, // ⚠️ Ideally remove from schema ASAP
       nationalId: payload.nationalId ?? null,
       bio: payload.bio ?? null,
       metadata: payload.metadata ?? [],
+      avatarUrl: payload.avatarUrl ?? null,
+      dateOfBirth: payload.dateOfBirth ?? null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     });
 
     if (DEBUG) console.log("signupUser auth:", authUser, "profile:", row);

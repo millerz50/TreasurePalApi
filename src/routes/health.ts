@@ -1,20 +1,17 @@
-// server/routes/health.ts
 import { Router } from "express";
 import { TablesDB } from "node-appwrite";
 import { tables as defaultTables } from "../appwrite/appwriteConfig";
 
 const router = Router();
 
-// Prefer explicit env; fail fast if not set so the health check is meaningful
 const DB_ID = process.env.APPWRITE_DATABASE_ID;
 if (!DB_ID) {
-  // optional: throw here during app bootstrap instead of at request-time
   console.warn(
     "APPWRITE_DATABASE_ID not set — /health will report disconnected"
   );
 }
 
-router.get("/health", async (_req, res) => {
+router.get("/", async (_req, res) => {
   const timestamp = new Date().toISOString();
 
   if (!DB_ID) {
@@ -38,7 +35,6 @@ router.get("/health", async (_req, res) => {
       tableCount: typeof result.total === "number" ? result.total : 0,
     });
   } catch (err: any) {
-    // log full error server-side for debugging, but avoid leaking secrets to clients
     console.error(
       "❌ TablesDB connection failed:",
       err?.message ?? err,

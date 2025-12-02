@@ -7,27 +7,35 @@ import compression from "compression";
 import cors from "cors";
 import express, { NextFunction, Request, Response } from "express";
 import rateLimit from "express-rate-limit";
+import session from "express-session";
 import helmet from "helmet";
 import morgan from "morgan";
+import passport from "passport";
 import { logger } from "./lib/logger";
+
+// Routes (must export default Router from each file)
+import agentsRoutes from "./routes/agentRoutes";
 import blogRoutes from "./routes/blogsRoutes";
-import health from "./routes/health";
+import dashboardRouter from "./routes/dashboard";
+import healthRoutes from "./routes/health";
+import propertiesRoutes from "./routes/propertyRoutes";
+import storageRoutes from "./routes/storageRoutes";
+import userRoutes from "./routes/userRoutes";
 
 // Appwrite SDK
 import { Client, Databases } from "node-appwrite";
 
-// Routers
-import dashboardRouter from "./routes/dashboard";
-import propertiesRoutes from "./routes/propertyRoutes";
-import storageRoutes from "./routes/storageRoutes";
-import userRoutes from "./routes/userRoutes";
-// ✅ If you want agents separately, create ./routes/agentsRoutes.ts
-import agentsRoutes from "./routes/agentRoutes";
+// Passport strategies
+import "./strategies/facebook";
+import "./strategies/google";
 
 const PORT = parseInt(process.env.PORT || "4011", 10);
 const app = express();
 
-app.set("trust proxy", true);
+// ✅ Trust proxy: safer setting
+if (process.env.NODE_ENV === "production") {
+  app.set("trust proxy", 1); // trust first proxy hop
+}
 
 //
 // ✅ Appwrite Client Setup
@@ -37,7 +45,7 @@ const client = new Client()
   .setProject(process.env.APPWRITE_PROJECT_ID!)
   .setKey(process.env.APPWRITE_API_KEY!);
 
-const databases = new Databases(client);
+export const databases = new Databases(client);
 
 //
 // ✅ Security + Performance
@@ -77,7 +85,6 @@ app.use(
 //
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use("/api/json", express.json());
 
 //
 // ✅ Logging with Morgan + Winston
@@ -99,8 +106,22 @@ const limiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
-
 app.use("/api", limiter);
+
+//
+// ✅ Session + Passport
+//
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET!,
+    resave: false,
+    saveUninitialized: false,
+    cookie: { secure: process.env.NODE_ENV === "production" },
+  })
+);
+
+app.use(passport.initialize());
+app.use(passport.session());
 
 //
 // ✅ Routes
@@ -109,12 +130,38 @@ app.use("/api/properties", propertiesRoutes);
 app.use("/api/dashboard", dashboardRouter);
 app.use("/api/users", userRoutes);
 app.use("/api/storage", storageRoutes);
-app.use("/api/agents", agentsRoutes); // only if you create a dedicated agentsRoutes.ts
+app.use("/api/agents", agentsRoutes);
 app.use("/api/blogs", blogRoutes);
+app.use("/api/health", healthRoutes);
+
 //
-// ✅ Health Check
+// ✅ OAuth Routes
 //
-app.use("/api/health", health);
+app.get(
+  "/api/auth/google",
+  passport.authenticate("google", { scope: ["profile", "email"] })
+);
+
+app.get(
+  "/api/auth/google/callback",
+  passport.authenticate("google", { failureRedirect: "/signin" }),
+  (req: Request, res: Response) => {
+    res.redirect("https://treasure-pal.vercel.app/dashboard");
+  }
+);
+
+app.get(
+  "/api/auth/facebook",
+  passport.authenticate("facebook", { scope: ["email"] })
+);
+
+app.get(
+  "/api/auth/facebook/callback",
+  passport.authenticate("facebook", { failureRedirect: "/signin" }),
+  (req: Request, res: Response) => {
+    res.redirect("https://treasure-pal.vercel.app/dashboard");
+  }
+);
 
 //
 // ✅ Error Handler

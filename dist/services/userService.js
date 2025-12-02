@@ -83,20 +83,26 @@ async function listUsers(limit = 100, offset = 0) {
 async function signupUser(payload) {
     try {
         // 1. Create auth user (Appwrite) with email + password + name
-        // 🚫 Do not send phone to Appwrite
+        // 🚫 Do not send phone or extra fields to Appwrite
         const authUser = await users.create(ID.unique(), payload.email, payload.password, `${payload.firstName} ${payload.surname}`, null);
-        // 2. Create profile row linked to auth user (store phone here only)
+        // 2. Create profile row linked to auth user (store extended fields here)
         const row = await tablesDB.createRow(DB_ID, USERS_TABLE, ID.unique(), {
             accountid: authUser.$id,
             email: payload.email.toLowerCase(),
             firstName: payload.firstName,
             surname: payload.surname,
+            phone: payload.phone ?? null,
+            country: payload.country ?? null,
+            location: payload.location ?? null,
             role: payload.role ?? "user",
             status: payload.status ?? "Active",
-            password: payload.password, // ⚠️ Ideally remove from schema ASAP
             nationalId: payload.nationalId ?? null,
             bio: payload.bio ?? null,
             metadata: payload.metadata ?? [],
+            avatarUrl: payload.avatarUrl ?? null,
+            dateOfBirth: payload.dateOfBirth ?? null,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
         });
         if (DEBUG)
             console.log("signupUser auth:", authUser, "profile:", row);
