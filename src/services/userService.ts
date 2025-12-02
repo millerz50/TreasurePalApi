@@ -30,9 +30,9 @@ export interface UserRow {
   nationalId?: string | null;
   bio?: string | null;
   metadata?: string[];
-  phone?: string;
-  country?: string;
-  location?: string;
+  phone?: string | null;
+  country?: string | null;
+  location?: string | null;
   avatarUrl?: string | null;
   dateOfBirth?: string | null;
   createdAt?: string;
@@ -62,6 +62,22 @@ function logError(
       stack: err instanceof Error ? err.stack : null,
     })
   );
+}
+
+/**
+ * Normalize phone to E.164-ish string or return null.
+ * This is conservative: it keeps a leading '+' and digits only, max 15 digits.
+ * If the input is invalid, returns null so Appwrite is never given an invalid phone.
+ */
+function normalizePhone(phone?: unknown): string | null {
+  if (!phone || typeof phone !== "string") return null;
+  const trimmed = phone.trim();
+  // allow leading + and digits, remove spaces, dashes, parentheses
+  const cleaned = trimmed.replace(/[\s\-().]/g, "");
+  if (!cleaned.startsWith("+")) return null;
+  const digits = cleaned.replace(/^\+/, "");
+  if (!/^\d{1,15}$/.test(digits)) return null;
+  return `+${digits}`;
 }
 
 // 🔎 Get by table row ID
@@ -121,6 +137,22 @@ export async function signupUser(payload: {
   dateOfBirth?: string;
 }) {
   try {
+    // Defensive logging to prove which file is executing at runtime
+    if (DEBUG) {
+      console.log("DEBUG signupUser __filename:", __filename);
+      console.log("DEBUG signupUser cwd:", process.cwd());
+      console.log(
+        "DEBUG signupUser raw phone present:",
+        typeof payload.phone !== "undefined",
+        "value:",
+        payload.phone
+      );
+    }
+
+    // Normalize phone for storage only; never pass phone to Appwrite create
+    const normalizedPhone = normalizePhone(payload.phone);
+
+    // Create auth user with 4 args only (do not pass phone to Appwrite)
     const authUser = await users.create(
       ID.unique(),
       payload.email,
@@ -128,12 +160,13 @@ export async function signupUser(payload: {
       `${payload.firstName} ${payload.surname}`
     );
 
+    // Create profile row linked to auth user (store extended fields here)
     const row = await tablesDB.createRow(DB_ID, USERS_TABLE, ID.unique(), {
       accountid: authUser.$id,
       email: payload.email.toLowerCase(),
       firstName: payload.firstName,
       surname: payload.surname,
-      phone: payload.phone ?? null,
+      phone: normalizedPhone, // store normalized phone or null
       country: payload.country ?? null,
       location: payload.location ?? null,
       role: payload.role ?? "user",
@@ -166,7 +199,20 @@ export async function updateUser(
   updates: Record<string, unknown>
 ) {
   try {
+    // Prevent accidental password exposure or update via profile endpoint
     if ("password" in updates) delete (updates as any).password;
+
+    // If phone is present in updates, normalize it; if invalid, remove it
+    if ("phone" in updates) {
+      const p = updates.phone as unknown;
+      const normalized = normalizePhone(p as string);
+      if (normalized) {
+        updates.phone = normalized;
+      } else {
+        delete updates.phone;
+      }
+    }
+
     const row = await tablesDB.updateRow(DB_ID, USERS_TABLE, userId, updates);
     return safeFormat(row);
   } catch (err: unknown) {
