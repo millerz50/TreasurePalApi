@@ -183,6 +183,21 @@ export async function signupUser(payload: {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     });
+// Defensive monkeypatch: ensure users.create never receives a 5th phone arg
+const originalUsersCreate = users.create && users.create.bind(users);
+if (originalUsersCreate) {
+  users.create = async (...args: unknown[]) => {
+    if (args.length > 4) {
+      // Log what would have been passed so you can inspect deploy logs
+      console.log("DEBUG users.create stripping extra args:", args.slice(4));
+      args = args.slice(0, 4);
+    }
+    // @ts-ignore call original
+    return originalUsersCreate(...args);
+  };
+}
+
+
 
     if (DEBUG) console.log("signupUser auth:", authUser, "profile:", row);
     return { authUser, profile: safeFormat(row) };
