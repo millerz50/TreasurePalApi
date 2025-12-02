@@ -153,12 +153,16 @@ export async function signupUser(payload: {
     const normalizedPhone = normalizePhone(payload.phone);
 
     // Create auth user with 4 args only (do not pass phone to Appwrite)
-    const authUser = await users.create(
+    const createArgs = [
       ID.unique(),
       payload.email,
       payload.password,
-      `${payload.firstName} ${payload.surname}`
-    );
+      `${payload.firstName} ${payload.surname}`,
+    ];
+
+    if (DEBUG) console.log("DEBUG users.create args (pre-call):", createArgs);
+
+    const authUser = await users.create(...createArgs);
 
     // Create profile row linked to auth user (store extended fields here)
     const row = await tablesDB.createRow(DB_ID, USERS_TABLE, ID.unique(), {
