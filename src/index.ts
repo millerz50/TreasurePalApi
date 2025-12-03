@@ -13,7 +13,7 @@ import morgan from "morgan";
 import passport from "passport";
 import { logger } from "./lib/logger";
 
-// Routes (must export default Router from each file)
+// Routes
 import agentsRoutes from "./routes/agentRoutes";
 import blogRoutes from "./routes/blogsRoutes";
 import dashboardRouter from "./routes/dashboard";
@@ -32,7 +32,7 @@ import "./strategies/google";
 const PORT = parseInt(process.env.PORT || "4011", 10);
 const app = express();
 
-// Trust proxy when in production (Render, Vercel, etc.)
+// Trust proxy when in production
 if (process.env.NODE_ENV === "production") {
   app.set("trust proxy", 1);
 }
@@ -69,7 +69,6 @@ const allowedOrigins = [
 
 const corsOptions: cors.CorsOptions = {
   origin: (origin, callback) => {
-    // Allow requests with no origin (e.g., mobile apps, curl, server-to-server)
     if (!origin) return callback(null, true);
     if (allowedOrigins.includes(origin)) return callback(null, true);
     return callback(new Error(`Not allowed by CORS: ${origin}`));
@@ -88,8 +87,7 @@ const corsOptions: cors.CorsOptions = {
 
 // Apply CORS middleware early
 app.use(cors(corsOptions));
-// Ensure preflight requests are handled
-// simple fix: match any path
+// Express v5-safe wildcard for preflight
 app.options("/*", cors(corsOptions));
 
 //
@@ -130,10 +128,10 @@ app.use(
     resave: false,
     saveUninitialized: false,
     cookie: {
-      secure: isProd, // send cookie only over HTTPS in production
+      secure: isProd,
       httpOnly: true,
-      sameSite: isProd ? "none" : "lax", // allow cross-site cookies when needed
-      maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
+      sameSite: isProd ? "none" : "lax",
+      maxAge: 1000 * 60 * 60 * 24 * 7,
     },
   })
 );
@@ -186,19 +184,18 @@ app.get(
 );
 
 //
-// Health-check endpoint (simple)
+// Health-check endpoint
 //
 app.get("/healthz", (_req: Request, res: Response) => {
   res.status(200).json({ status: "ok" });
 });
 
 //
-// Error handler (must be after routes)
+// Error handler
 //
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   const message = err instanceof Error ? err.message : String(err);
   logger.error(`❌ Uncaught error: ${message}`, err);
-  // If it's a CORS error thrown by our origin check, return 403
   if (message.startsWith("Not allowed by CORS")) {
     return res.status(403).json({ error: "CORS error", details: message });
   }
