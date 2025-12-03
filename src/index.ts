@@ -1,3 +1,4 @@
+// src/index.ts
 import dotenv from "dotenv";
 dotenv.config({
   path: process.env.NODE_ENV === "production" ? ".env" : ".env.local",
@@ -48,72 +49,76 @@ const client = new Client()
 export const databases = new Databases(client);
 
 //
-// CORS configuration (dynamic)
+// CORS configuration
 //
-const allowedOrigins = [
+const allowedOrigins = new Set([
   "http://localhost:3000",
   "https://treasure-pal.vercel.app",
   "https://www.treasurepal.co.zw",
   "https://treasurepal.co.zw",
+  "https://treasurepal.com",
   "https://www.treasurepal.com",
   "https://www.treasureprops.com",
   "https://treasureprops.com",
   "https://www.treasureprops.co.zw",
-];
+]);
 
-const corsOptions: cors.CorsOptions = {
-  origin: (origin, callback) => {
-    // Allow requests with no origin (e.g., server-to-server, curl)
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) return callback(null, true);
-    return callback(new Error(`Not allowed by CORS: ${origin}`));
-  },
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: [
-    "Content-Type",
-    "Authorization",
-    "X-Requested-With",
-    "Accept",
-    "Origin",
-  ],
-  credentials: true,
-  optionsSuccessStatus: 204,
-};
-
-// Apply CORS middleware early so it sets headers for normal requests
-app.use(cors(corsOptions));
-
-/*
-  Manual preflight handler (does not register a route pattern with path-to-regexp).
-  This ensures OPTIONS requests are answered with the correct headers without
-  using app.options(...) which can trigger path-to-regexp errors in some environments.
-*/
+// Lightweight preflight + CORS middleware applied before anything else
 app.use((req: Request, res: Response, next: NextFunction) => {
-  // Only handle preflight requests here
-  if (req.method === "OPTIONS") {
-    const origin = req.headers.origin as string | undefined;
-    // If origin is allowed, echo it back; otherwise respond 403
-    if (!origin || allowedOrigins.includes(origin)) {
-      res.setHeader("Access-Control-Allow-Origin", origin || "*");
-      res.setHeader(
-        "Access-Control-Allow-Methods",
-        "GET,POST,PUT,PATCH,DELETE,OPTIONS"
-      );
-      res.setHeader(
-        "Access-Control-Allow-Headers",
-        "Content-Type,Authorization,X-Requested-With,Accept,Origin"
-      );
-      // If you use credentials, allow them explicitly
-      if (req.headers.origin && allowedOrigins.includes(req.headers.origin)) {
-        res.setHeader("Access-Control-Allow-Credentials", "true");
-      }
-      return res.sendStatus(204);
-    } else {
-      return res.status(403).json({ error: "CORS origin not allowed" });
+  const origin = req.headers.origin as string | undefined;
+
+  // Allow server-to-server requests (no Origin) with a permissive header
+  if (!origin) {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+  } else if (allowedOrigins.has(origin)) {
+    // Echo the exact origin when allowed (required for credentials)
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Vary", "Origin");
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+  } else {
+    // If this is a preflight from a disallowed origin, reject early
+    if (req.method === "OPTIONS") {
+      return res.status(403).send("CORS origin not allowed");
     }
+    // For non-OPTIONS requests, continue so the request can be handled or rejected later
   }
+
+  res.setHeader(
+    "Access-Control-Allow-Methods",
+    "GET,POST,PUT,PATCH,DELETE,OPTIONS"
+  );
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type,Authorization,X-Requested-With,Accept,Origin"
+  );
+
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(204);
+  }
+
   next();
 });
+
+// Also apply the standard cors middleware for normal requests (keeps behavior consistent)
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.has(origin)) return callback(null, true);
+      return callback(new Error(`Not allowed by CORS: ${origin}`));
+    },
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-Requested-With",
+      "Accept",
+      "Origin",
+    ],
+    credentials: true,
+    optionsSuccessStatus: 204,
+  })
+);
 
 //
 // Security + Performance
@@ -159,7 +164,7 @@ app.use(
     resave: false,
     saveUninitialized: false,
     cookie: {
-      secure: isProd, // only send cookie over HTTPS in production
+      secure: isProd,
       httpOnly: true,
       sameSite: isProd ? "none" : "lax",
       maxAge: 1000 * 60 * 60 * 24 * 7,
