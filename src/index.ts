@@ -48,7 +48,7 @@ const client = new Client()
 export const databases = new Databases(client);
 
 //
-// CORS configuration (dynamic, handles preflight)
+// CORS configuration (dynamic)
 //
 const allowedOrigins = [
   "http://localhost:3000",
@@ -80,12 +80,40 @@ const corsOptions: cors.CorsOptions = {
   optionsSuccessStatus: 204,
 };
 
-// Apply CORS middleware as early as possible so preflight requests are handled
+// Apply CORS middleware early so it sets headers for normal requests
 app.use(cors(corsOptions));
 
-// Explicit preflight handler compatible with newer path-to-regexp / Express versions
-// This avoids errors when using '*' or '/*' patterns in some router versions.
-app.options("/:path(*)", cors(corsOptions));
+/*
+  Manual preflight handler (does not register a route pattern with path-to-regexp).
+  This ensures OPTIONS requests are answered with the correct headers without
+  using app.options(...) which can trigger path-to-regexp errors in some environments.
+*/
+app.use((req: Request, res: Response, next: NextFunction) => {
+  // Only handle preflight requests here
+  if (req.method === "OPTIONS") {
+    const origin = req.headers.origin as string | undefined;
+    // If origin is allowed, echo it back; otherwise respond 403
+    if (!origin || allowedOrigins.includes(origin)) {
+      res.setHeader("Access-Control-Allow-Origin", origin || "*");
+      res.setHeader(
+        "Access-Control-Allow-Methods",
+        "GET,POST,PUT,PATCH,DELETE,OPTIONS"
+      );
+      res.setHeader(
+        "Access-Control-Allow-Headers",
+        "Content-Type,Authorization,X-Requested-With,Accept,Origin"
+      );
+      // If you use credentials, allow them explicitly
+      if (req.headers.origin && allowedOrigins.includes(req.headers.origin)) {
+        res.setHeader("Access-Control-Allow-Credentials", "true");
+      }
+      return res.sendStatus(204);
+    } else {
+      return res.status(403).json({ error: "CORS origin not allowed" });
+    }
+  }
+  next();
+});
 
 //
 // Security + Performance
@@ -133,8 +161,8 @@ app.use(
     cookie: {
       secure: isProd, // only send cookie over HTTPS in production
       httpOnly: true,
-      sameSite: isProd ? "none" : "lax", // allow cross-site cookies when needed
-      maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
+      sameSite: isProd ? "none" : "lax",
+      maxAge: 1000 * 60 * 60 * 24 * 7,
     },
   })
 );
@@ -199,7 +227,6 @@ app.get("/healthz", (_req: Request, res: Response) => {
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   const message = err instanceof Error ? err.message : String(err);
   logger.error(`❌ Uncaught error: ${message}`, err);
-  // If it's a CORS origin rejection, return 403 so client sees a clear response
   if (message.startsWith("Not allowed by CORS")) {
     return res.status(403).json({ error: "CORS error", details: message });
   }
