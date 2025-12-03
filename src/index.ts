@@ -89,7 +89,8 @@ const corsOptions: cors.CorsOptions = {
 // Apply CORS middleware early
 app.use(cors(corsOptions));
 // Ensure preflight requests are handled
-app.options("*", cors(corsOptions));
+// simple fix: match any path
+app.options("/*", cors(corsOptions));
 
 //
 // Body parsing
