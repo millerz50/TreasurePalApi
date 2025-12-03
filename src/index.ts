@@ -91,7 +91,7 @@ app.use(cors(corsOptions));
 
 // If you need an explicit preflight route, use an Express v5-compatible named wildcard.
 // This avoids path-to-regexp errors when '*' or '/*' is rejected by the router.
-app.options("/:path(*)", cors(corsOptions));
+//app.options("/:path(*)", cors(corsOptions));
 
 //
 // Body parsing
