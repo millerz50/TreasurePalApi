@@ -32,29 +32,29 @@ import "./strategies/google";
 const PORT = parseInt(process.env.PORT || "4011", 10);
 const app = express();
 
-// ✅ Trust proxy: safer setting
+// Trust proxy when in production (Render, Vercel, etc.)
 if (process.env.NODE_ENV === "production") {
-  app.set("trust proxy", 1); // trust first proxy hop
+  app.set("trust proxy", 1);
 }
 
 //
-// ✅ Appwrite Client Setup
+// Appwrite Client Setup
 //
 const client = new Client()
-  .setEndpoint(process.env.APPWRITE_ENDPOINT!)
-  .setProject(process.env.APPWRITE_PROJECT_ID!)
-  .setKey(process.env.APPWRITE_API_KEY!);
+  .setEndpoint(process.env.APPWRITE_ENDPOINT || "")
+  .setProject(process.env.APPWRITE_PROJECT_ID || "")
+  .setKey(process.env.APPWRITE_API_KEY || "");
 
 export const databases = new Databases(client);
 
 //
-// ✅ Security + Performance
+// Security + Performance
 //
 app.use(helmet());
 app.use(compression());
 
 //
-// ✅ Dynamic CORS
+// CORS configuration (dynamic, handles preflight)
 //
 const allowedOrigins = [
   "http://localhost:3000",
@@ -67,27 +67,38 @@ const allowedOrigins = [
   "https://www.treasureprops.co.zw",
 ];
 
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error(`Not allowed by CORS: ${origin}`));
-      }
-    },
-    credentials: true,
-  })
-);
+const corsOptions: cors.CorsOptions = {
+  origin: (origin, callback) => {
+    // Allow requests with no origin (e.g., mobile apps, curl, server-to-server)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error(`Not allowed by CORS: ${origin}`));
+  },
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "X-Requested-With",
+    "Accept",
+    "Origin",
+  ],
+  credentials: true,
+  optionsSuccessStatus: 204,
+};
+
+// Apply CORS middleware early
+app.use(cors(corsOptions));
+// Ensure preflight requests are handled
+app.options("*", cors(corsOptions));
 
 //
-// ✅ Body Parsing
+// Body parsing
 //
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 //
-// ✅ Logging with Morgan + Winston
+// Logging with Morgan + Winston
 //
 app.use(
   morgan("combined", {
@@ -98,7 +109,7 @@ app.use(
 );
 
 //
-// ✅ Rate Limiting
+// Rate limiting
 //
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -109,14 +120,20 @@ const limiter = rateLimit({
 app.use("/api", limiter);
 
 //
-// ✅ Session + Passport
+// Session + Passport
 //
+const isProd = process.env.NODE_ENV === "production";
 app.use(
   session({
-    secret: process.env.SESSION_SECRET!,
+    secret: process.env.SESSION_SECRET || "change-this-in-prod",
     resave: false,
     saveUninitialized: false,
-    cookie: { secure: process.env.NODE_ENV === "production" },
+    cookie: {
+      secure: isProd, // send cookie only over HTTPS in production
+      httpOnly: true,
+      sameSite: isProd ? "none" : "lax", // allow cross-site cookies when needed
+      maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
+    },
   })
 );
 
@@ -124,7 +141,7 @@ app.use(passport.initialize());
 app.use(passport.session());
 
 //
-// ✅ Routes
+// Routes
 //
 app.use("/api/properties", propertiesRoutes);
 app.use("/api/dashboard", dashboardRouter);
@@ -135,10 +152,8 @@ app.use("/api/blogs", blogRoutes);
 app.use("/api/health", healthRoutes);
 
 //
-// ✅ OAuth Routes
+// OAuth Routes
 //
-
-// Google OAuth
 app.get(
   "/api/auth/google",
   passport.authenticate("google", { scope: ["profile", "email"] })
@@ -148,12 +163,12 @@ app.get(
   "/api/auth/google/callback",
   passport.authenticate("google", { failureRedirect: "/signin" }),
   (req: Request, res: Response) => {
-    // Redirect to your frontend dashboard after successful login
-    res.redirect(`${process.env.CLIENT_URL}/dashboard`);
+    res.redirect(
+      `${process.env.CLIENT_URL || "https://www.treasurepal.co.zw"}/dashboard`
+    );
   }
 );
 
-// Facebook OAuth
 app.get(
   "/api/auth/facebook",
   passport.authenticate("facebook", { scope: ["email"] })
@@ -163,17 +178,29 @@ app.get(
   "/api/auth/facebook/callback",
   passport.authenticate("facebook", { failureRedirect: "/signin" }),
   (req: Request, res: Response) => {
-    // Redirect to your frontend dashboard after successful login
-    res.redirect(`${process.env.CLIENT_URL}/dashboard`);
+    res.redirect(
+      `${process.env.CLIENT_URL || "https://www.treasurepal.co.zw"}/dashboard`
+    );
   }
 );
 
 //
-// ✅ Error Handler
+// Health-check endpoint (simple)
 //
-app.use((err: unknown, req: Request, res: Response, next: NextFunction) => {
+app.get("/healthz", (_req: Request, res: Response) => {
+  res.status(200).json({ status: "ok" });
+});
+
+//
+// Error handler (must be after routes)
+//
+app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   const message = err instanceof Error ? err.message : String(err);
   logger.error(`❌ Uncaught error: ${message}`, err);
+  // If it's a CORS error thrown by our origin check, return 403
+  if (message.startsWith("Not allowed by CORS")) {
+    return res.status(403).json({ error: "CORS error", details: message });
+  }
   res.status(500).json({
     error: "Internal server error",
     details: message,
@@ -181,7 +208,7 @@ app.use((err: unknown, req: Request, res: Response, next: NextFunction) => {
 });
 
 //
-// ✅ Graceful Shutdown
+// Graceful shutdown
 //
 process.on("SIGINT", async () => {
   logger.info("🛑 Shutting down gracefully...");
@@ -189,8 +216,10 @@ process.on("SIGINT", async () => {
 });
 
 //
-// ✅ Start Server
+// Start server
 //
 app.listen(PORT, () => {
-  logger.info(`🚀 Server running on http://localhost:${PORT}`);
+  logger.info(`🚀 Server running on port ${PORT}`);
 });
+
+export default app;
