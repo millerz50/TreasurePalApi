@@ -32,7 +32,7 @@ import "./strategies/google";
 const PORT = parseInt(process.env.PORT || "4011", 10);
 const app = express();
 
-// Trust proxy when in production
+// Trust proxy when in production (Render, Vercel, etc.)
 if (process.env.NODE_ENV === "production") {
   app.set("trust proxy", 1);
 }
@@ -46,12 +46,6 @@ const client = new Client()
   .setKey(process.env.APPWRITE_API_KEY || "");
 
 export const databases = new Databases(client);
-
-//
-// Security + Performance
-//
-app.use(helmet());
-app.use(compression());
 
 //
 // CORS configuration (dynamic, handles preflight)
@@ -86,12 +80,18 @@ const corsOptions: cors.CorsOptions = {
   optionsSuccessStatus: 204,
 };
 
-// Apply CORS middleware early (this handles preflight for most cases)
+// Apply CORS middleware as early as possible so preflight requests are handled
 app.use(cors(corsOptions));
 
-// If you need an explicit preflight route, use an Express v5-compatible named wildcard.
-// This avoids path-to-regexp errors when '*' or '/*' is rejected by the router.
-//app.options("/:path(*)", cors(corsOptions));
+// Explicit preflight handler compatible with newer path-to-regexp / Express versions
+// This avoids errors when using '*' or '/*' patterns in some router versions.
+app.options("/:path(*)", cors(corsOptions));
+
+//
+// Security + Performance
+//
+app.use(helmet());
+app.use(compression());
 
 //
 // Body parsing
@@ -131,10 +131,10 @@ app.use(
     resave: false,
     saveUninitialized: false,
     cookie: {
-      secure: isProd,
+      secure: isProd, // only send cookie over HTTPS in production
       httpOnly: true,
-      sameSite: isProd ? "none" : "lax",
-      maxAge: 1000 * 60 * 60 * 24 * 7,
+      sameSite: isProd ? "none" : "lax", // allow cross-site cookies when needed
+      maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
     },
   })
 );
@@ -199,6 +199,7 @@ app.get("/healthz", (_req: Request, res: Response) => {
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   const message = err instanceof Error ? err.message : String(err);
   logger.error(`❌ Uncaught error: ${message}`, err);
+  // If it's a CORS origin rejection, return 403 so client sees a clear response
   if (message.startsWith("Not allowed by CORS")) {
     return res.status(403).json({ error: "CORS error", details: message });
   }
