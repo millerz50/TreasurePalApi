@@ -202,3 +202,10 @@
 2025-12-02T10:55:01.369Z [INFO]: ::1 - - [02/Dec/2025:10:55:01 +0000] "GET /api/health/health HTTP/1.1" 404 156 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
 2025-12-02T10:55:07.253Z [INFO]: ::1 - - [02/Dec/2025:10:55:07 +0000] "GET /api/health HTTP/1.1" 200 86 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
 2025-12-02T10:55:38.812Z [INFO]: ::1 - - [02/Dec/2025:10:55:38 +0000] "GET /api/properties/all HTTP/1.1" 200 2 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
+2025-12-04T09:22:40.559Z [INFO]: 🚀 Server running on port 4011
+2025-12-04T10:04:13.559Z [INFO]: 🚀 Server running on port 4011
+2025-12-04T10:04:20.944Z [INFO]: 🚀 Server running on port 4011
+2025-12-04T10:06:25.397Z [INFO]: 🚀 Server running on port 4011
+2025-12-04T10:06:30.065Z [INFO]: 🚀 Server running on port 4011
+2025-12-04T10:06:36.915Z [INFO]: 🚀 Server running on port 4011
+2025-12-04T10:08:46.314Z [INFO]: 🛑 Shutting down gracefully...

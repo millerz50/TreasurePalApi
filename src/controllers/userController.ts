@@ -68,7 +68,6 @@ export async function signup(req: Request, res: Response) {
     res.status(400).json({ error: message });
   }
 }
-
 // 🔑 Login is client-side via Appwrite SDK
 export async function loginUser(_req: Request, res: Response) {
   res
@@ -79,7 +78,7 @@ export async function loginUser(_req: Request, res: Response) {
 // 👤 Current user profile based on Appwrite accountId (from middleware)
 export async function getUserProfile(req: Request, res: Response) {
   try {
-    const accountId = (req as any).accountId;
+    const accountId = req.accountId;
     if (!accountId) return res.status(401).json({ error: "Unauthorized" });
 
     const profile = await getUserByAccountId(accountId);

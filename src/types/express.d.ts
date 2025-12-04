@@ -1,24 +1,18 @@
-// src/types/express.d.ts
-import { Profile as FacebookProfile } from "passport-facebook";
-import { Profile as GoogleProfile } from "passport-google-oauth20";
-import { UserRole } from "../services/blogService";
+// types/express.d.ts
+import { AuthenticatedUser } from "./authenticatedUser";
 
 declare global {
   namespace Express {
-    interface User {
-      id: string;
-      email?: string;
-      role: UserRole;
-      profile?: FacebookProfile | GoogleProfile; // ✅ optional now
-    }
-
     interface Request {
-      user?: User;
+      // Multer file uploads
+      file?: Multer.File;
+      files?: Multer.File[];
+
+      // Appwrite-authenticated user
+      authUser?: AuthenticatedUser;
+
+      // Account ID from Appwrite
+      accountId?: string;
     }
   }
-}
-
-export interface AuthenticatedUser {
-  id: string;
-  role: UserRole;
 }

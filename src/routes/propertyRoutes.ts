@@ -9,8 +9,7 @@ import {
   listProperties as listHandler,
   updateProperty as updateHandler,
 } from "../controllers/propertyController";
-import { verifyToken } from "../middleware/verifyToken";
-import { verifyTokenAndAdmin } from "../middleware/verifyTokenAndAdmin";
+import { verifyToken, verifyTokenAndAdmin } from "../middleware/verifyToken";
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage() });

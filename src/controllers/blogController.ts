@@ -4,7 +4,7 @@ import * as blogService from "../services/blogService";
 export async function createBlog(req: Request, res: Response) {
   try {
     const { title, content } = req.body;
-    const user = req.user;
+    const user = req.authUser; // ✅ use authUser
 
     if (!title || !content) {
       return res.status(400).json({ error: "Title and content required" });
@@ -17,7 +17,7 @@ export async function createBlog(req: Request, res: Response) {
       title,
       content,
       authorId: user.id,
-      authorRole: user.role as "user" | "agent" | "admin",
+      authorRole: user.role, // already typed as "admin" | "agent" | "user"
     });
 
     res.status(201).json(blog);
@@ -26,7 +26,7 @@ export async function createBlog(req: Request, res: Response) {
   }
 }
 
-export async function getBlogs(req: Request, res: Response) {
+export async function getBlogs(_req: Request, res: Response) {
   try {
     const blogs = await blogService.getPublishedBlogs();
     res.json(blogs);
@@ -38,6 +38,9 @@ export async function getBlogs(req: Request, res: Response) {
 export async function getBlog(req: Request, res: Response) {
   try {
     const blog = await blogService.getBlogById(req.params.id);
+    if (!blog) {
+      return res.status(404).json({ error: "Blog not found" });
+    }
     res.json(blog);
   } catch {
     res.status(404).json({ error: "Blog not found" });
@@ -46,12 +49,15 @@ export async function getBlog(req: Request, res: Response) {
 
 export async function updateBlog(req: Request, res: Response) {
   try {
-    const user = req.user;
+    const user = req.authUser; // ✅ use authUser
     if (!user) {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
     const blog = await blogService.getBlogById(req.params.id);
+    if (!blog) {
+      return res.status(404).json({ error: "Blog not found" });
+    }
 
     if (blog.authorId !== user.id && user.role !== "admin") {
       return res.status(403).json({ error: "Not allowed" });
@@ -66,12 +72,15 @@ export async function updateBlog(req: Request, res: Response) {
 
 export async function deleteBlog(req: Request, res: Response) {
   try {
-    const user = req.user;
+    const user = req.authUser; // ✅ use authUser
     if (!user) {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
     const blog = await blogService.getBlogById(req.params.id);
+    if (!blog) {
+      return res.status(404).json({ error: "Blog not found" });
+    }
 
     if (blog.authorId !== user.id && user.role !== "admin") {
       return res.status(403).json({ error: "Not allowed" });
@@ -86,7 +95,7 @@ export async function deleteBlog(req: Request, res: Response) {
 
 export async function publishBlog(req: Request, res: Response) {
   try {
-    const user = req.user;
+    const user = req.authUser; // ✅ use authUser
     if (!user) {
       return res.status(401).json({ error: "Unauthorized" });
     }

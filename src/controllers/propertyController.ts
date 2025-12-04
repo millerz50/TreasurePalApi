@@ -1,4 +1,3 @@
-// server/controllers/propertyController.ts
 import { Request, Response } from "express";
 import {
   createProperty as svcCreateProperty,
@@ -39,19 +38,18 @@ export async function getPropertyById(req: Request, res: Response) {
 
 /**
  * Protected: create property (agent)
- * Expects req.user (verifyToken) and file parsed by multer at route level.
  */
 export async function createProperty(req: Request, res: Response) {
   try {
-    const user = (req as any).user;
-    if (!user || user.role !== "agent")
+    const user = req.authUser;
+    if (!user || user.role !== "agent") {
       return res
         .status(403)
         .json({ error: "Only agents can create properties" });
+    }
 
-    const body = { ...req.body, agentId: user.$id };
+    const body = { ...req.body, agentId: user.id };
 
-    // Build imageFiles map if a file was uploaded
     const imageFiles = req.file
       ? {
           frontElevation: {
@@ -70,18 +68,18 @@ export async function createProperty(req: Request, res: Response) {
 
 /**
  * Protected: update property (owner or admin)
- * Expects req.user (verifyToken) and file parsed by multer at route level.
  */
 export async function updateProperty(req: Request, res: Response) {
   try {
-    const user = (req as any).user;
+    const user = req.authUser;
     if (!user) return res.status(401).json({ error: "Unauthorized" });
 
     const existing = await svcGetPropertyById(req.params.id);
     if (!existing) return res.status(404).json({ error: "Property not found" });
 
-    if (user.role !== "admin" && existing.agentId !== user.$id)
+    if (user.role !== "admin" && existing.agentId !== user.id) {
       return res.status(403).json({ error: "Forbidden" });
+    }
 
     const imageFiles = req.file
       ? {
@@ -108,14 +106,15 @@ export async function updateProperty(req: Request, res: Response) {
  */
 export async function deleteProperty(req: Request, res: Response) {
   try {
-    const user = (req as any).user;
+    const user = req.authUser;
     if (!user) return res.status(401).json({ error: "Unauthorized" });
 
     const existing = await svcGetPropertyById(req.params.id);
     if (!existing) return res.status(404).json({ error: "Property not found" });
 
-    if (user.role !== "admin" && existing.agentId !== user.$id)
+    if (user.role !== "admin" && existing.agentId !== user.id) {
       return res.status(403).json({ error: "Forbidden" });
+    }
 
     await svcDeleteProperty(req.params.id);
     res.status(204).send();
@@ -126,18 +125,18 @@ export async function deleteProperty(req: Request, res: Response) {
 
 /**
  * Admin: approve/publish property
- * Expects verifyTokenAndAdmin to have run and set req.user to admin
  */
 export async function approveProperty(req: Request, res: Response) {
   try {
-    const admin = (req as any).user;
-    if (!admin || admin.role !== "admin")
+    const admin = req.authUser;
+    if (!admin || admin.role !== "admin") {
       return res.status(403).json({ error: "Admin required" });
+    }
 
     const updates = {
       status: "approved",
       published: true,
-      approvedBy: admin.$id,
+      approvedBy: admin.id,
       approvedAt: new Date().toISOString(),
     };
 
