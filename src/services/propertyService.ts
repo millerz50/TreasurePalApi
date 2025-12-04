@@ -1,3 +1,4 @@
+// server/services/propertyService.ts
 import {
   Client,
   ID,
@@ -9,20 +10,6 @@ import {
 } from "node-appwrite";
 import { uploadToAppwriteBucket } from "../lib/uploadToAppwrite";
 
-function getPreviewUrl(fileId: string | null): string | null {
-  if (!fileId) return null;
-
-  const endpointRaw = process.env.APPWRITE_ENDPOINT!;
-  const endpoint = endpointRaw.endsWith("/v1")
-    ? endpointRaw.replace(/\/$/, "")
-    : endpointRaw.replace(/\/$/, "") + "/v1";
-
-  const bucketId = process.env.APPWRITE_BUCKET_ID!;
-  const projectId = process.env.APPWRITE_PROJECT_ID!;
-
-  return `${endpoint}/storage/buckets/${bucketId}/files/${fileId}/preview?project=${projectId}`;
-}
-
 const client = new Client()
   .setEndpoint(process.env.APPWRITE_ENDPOINT!)
   .setProject(process.env.APPWRITE_PROJECT_ID!)
@@ -31,9 +18,10 @@ const client = new Client()
 const tablesDB = new TablesDB(client);
 const storage = new Storage(client);
 
+// ✅ Database and collection IDs
 const DB_ID = process.env.APPWRITE_DATABASE_ID!;
-const PROPERTIES_TABLE =
-  process.env.APPWRITE_PROPERTIES_COLLECTION_ID || "properties";
+// Since you confirmed the collection ID is literally "properties"
+const PROPERTIES_TABLE = "properties";
 const USERS_TABLE = process.env.APPWRITE_USERS_COLLECTION_ID || "users";
 
 const IMAGE_KEYS = [
@@ -85,6 +73,14 @@ function parseCoordinates(value: any): {
   return {};
 }
 
+function getPreviewUrl(fileId: string | null): string | null {
+  if (!fileId) return null;
+  const endpoint = process.env.APPWRITE_ENDPOINT!.replace(/\/$/, "");
+  const bucketId = process.env.APPWRITE_BUCKET_ID!;
+  const projectId = process.env.APPWRITE_PROJECT_ID!;
+  return `${endpoint}/storage/buckets/${bucketId}/files/${fileId}/preview?project=${projectId}`;
+}
+
 function formatProperty(row: any) {
   const base = {
     $id: row.$id,
@@ -120,6 +116,8 @@ function formatProperty(row: any) {
   return { ...base, images };
 }
 
+// -------------------- CRUD --------------------
+
 export async function listProperties(limit = 100) {
   const res = await tablesDB.listRows(
     DB_ID,
@@ -139,7 +137,7 @@ export async function createProperty(
   payload: any,
   imageFiles?: Record<string, { buffer: Buffer; name: string }>
 ) {
-  // ✅ Validate agent by accountid instead of $id
+  // ✅ Validate agent by accountid
   const agentRes = await tablesDB.listRows(DB_ID, USERS_TABLE, [
     Query.equal("accountid", String(payload.agentId)),
   ]);
@@ -176,20 +174,19 @@ export async function createProperty(
     country: payload.country || "",
     amenities: toCsv(payload.amenities),
     ...coords,
-    agentId: String(payload.agentId), // now consistent with accountid
+    agentId: String(payload.agentId),
     published: false,
     approvedBy: null,
     approvedAt: null,
     ...imageIds,
   };
 
-  // ✅ Permissions: agent + optional public + admins team
   const permissions = [
     Permission.read(Role.user(payload.agentId)),
     Permission.update(Role.user(payload.agentId)),
     Permission.delete(Role.user(payload.agentId)),
-    Permission.read(Role.any()), // optional: allow public read
-    Permission.update(Role.team("admins")), // if you have an "admins" team
+    Permission.read(Role.any()), // optional public read
+    Permission.update(Role.team("admins")),
     Permission.delete(Role.team("admins")),
   ];
 
