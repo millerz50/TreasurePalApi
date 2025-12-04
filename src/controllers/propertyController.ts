@@ -41,6 +41,10 @@ export async function getPropertyById(req: Request, res: Response) {
  */
 export async function createProperty(req: Request, res: Response) {
   try {
+    // 🔍 Debug: log token and user
+    console.log("Authorization header:", req.headers.authorization);
+    console.log("Parsed authUser:", req.authUser);
+
     const user = req.authUser;
     if (!user || user.role !== "agent") {
       return res
@@ -62,6 +66,7 @@ export async function createProperty(req: Request, res: Response) {
     const property = await svcCreateProperty(body, imageFiles);
     res.status(201).json(property);
   } catch (err: any) {
+    console.error("❌ Error in createProperty:", err);
     res.status(400).json({ error: err.message });
   }
 }
@@ -71,6 +76,9 @@ export async function createProperty(req: Request, res: Response) {
  */
 export async function updateProperty(req: Request, res: Response) {
   try {
+    console.log("Authorization header:", req.headers.authorization);
+    console.log("Parsed authUser:", req.authUser);
+
     const user = req.authUser;
     if (!user) return res.status(401).json({ error: "Unauthorized" });
 
@@ -97,6 +105,7 @@ export async function updateProperty(req: Request, res: Response) {
     );
     res.json(updated);
   } catch (err: any) {
+    console.error("❌ Error in updateProperty:", err);
     res.status(400).json({ error: err.message });
   }
 }
@@ -106,6 +115,9 @@ export async function updateProperty(req: Request, res: Response) {
  */
 export async function deleteProperty(req: Request, res: Response) {
   try {
+    console.log("Authorization header:", req.headers.authorization);
+    console.log("Parsed authUser:", req.authUser);
+
     const user = req.authUser;
     if (!user) return res.status(401).json({ error: "Unauthorized" });
 
@@ -119,6 +131,7 @@ export async function deleteProperty(req: Request, res: Response) {
     await svcDeleteProperty(req.params.id);
     res.status(204).send();
   } catch (err: any) {
+    console.error("❌ Error in deleteProperty:", err);
     res.status(400).json({ error: err.message });
   }
 }
@@ -128,6 +141,9 @@ export async function deleteProperty(req: Request, res: Response) {
  */
 export async function approveProperty(req: Request, res: Response) {
   try {
+    console.log("Authorization header:", req.headers.authorization);
+    console.log("Parsed authUser:", req.authUser);
+
     const admin = req.authUser;
     if (!admin || admin.role !== "admin") {
       return res.status(403).json({ error: "Admin required" });
@@ -143,6 +159,7 @@ export async function approveProperty(req: Request, res: Response) {
     const updated = await svcUpdateProperty(req.params.id, updates);
     res.json(updated);
   } catch (err: any) {
+    console.error("❌ Error in approveProperty:", err);
     res.status(400).json({ error: err.message });
   }
 }
