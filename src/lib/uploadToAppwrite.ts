@@ -1,17 +1,22 @@
 import FormData from "form-data";
 import fs from "fs";
 import fetch from "node-fetch";
+import { v4 as uuid } from "uuid";
 import { saveTempFile } from "./saveTempFile";
 
 export async function uploadToAppwriteBucket(
   buffer: Buffer,
   filename: string
 ): Promise<{ fileId: string; previewUrl: string }> {
+  // Save buffer to a temp file
   const tempPath = await saveTempFile(buffer, filename);
   const fileStream = fs.createReadStream(tempPath);
 
+  // Generate a unique fileId
+  const fileId = `file-${uuid()}`;
+
   const form = new FormData();
-  form.append("fileId", "unique()");
+  form.append("fileId", fileId);
   form.append("file", fileStream, filename);
 
   const response = await fetch(
@@ -27,14 +32,17 @@ export async function uploadToAppwriteBucket(
     }
   );
 
-  fs.unlinkSync(tempPath); // Clean up temp file
+  // Clean up temp file
+  fs.unlinkSync(tempPath);
 
   const result = (await response.json()) as { $id: string; message?: string };
 
-  if (!response.ok) throw new Error(result.message || "Upload failed");
+  if (!response.ok) {
+    throw new Error(result.message || "Upload failed");
+  }
 
-  const fileId = result.$id;
-  const previewUrl = `${process.env.APPWRITE_ENDPOINT}/storage/buckets/${process.env.APPWRITE_BUCKET_ID}/files/${fileId}/view?project=${process.env.APPWRITE_PROJECT_ID}`;
+  const returnedId = result.$id;
+  const previewUrl = `${process.env.APPWRITE_ENDPOINT}/storage/buckets/${process.env.APPWRITE_BUCKET_ID}/files/${returnedId}/preview?project=${process.env.APPWRITE_PROJECT_ID}`;
 
-  return { fileId, previewUrl };
+  return { fileId: returnedId, previewUrl };
 }
