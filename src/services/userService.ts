@@ -126,10 +126,10 @@ export async function signupUser(payload: {
   metadata?: string[];
   avatarUrl?: string;
   dateOfBirth?: string;
-  //phone?: string;
+  phone?: string;
 }) {
   try {
-    // const normalizedPhone = normalizePhone(payload.phone);
+    const normalizedPhone = normalizePhone(payload.phone);
 
     // Create auth user with 4 args only
     const createArgs = [
@@ -142,8 +142,8 @@ export async function signupUser(payload: {
 
     const authUser = await users.create(...createArgs);
 
-    // Save phone to JSON file (not Appwrite)
-    //savePhone(authUser.$id, normalizedPhone);
+    //Save phone to JSON file (not Appwrite)
+    savePhone(authUser.$id, normalizedPhone);
 
     // Create profile row linked to auth user
     const row = await tablesDB.createRow(DB_ID, USERS_TABLE, ID.unique(), {
