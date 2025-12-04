@@ -7,7 +7,7 @@
   "scripts": {
     "clean": "rimraf dist",
     "build": "tsc",
-    "start": "node dist/index.js",
+    "start": "node src/ndex.ts",
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts"
   },
   "keywords": [],
