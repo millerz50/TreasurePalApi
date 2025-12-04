@@ -2,12 +2,12 @@
   "name": "backend",
   "version": "1.0.0",
   "description": "TreasurePal backend service",
-  "main": "src/index.ts",
+  "main": "dist/index.js",
   "type": "commonjs",
   "scripts": {
     "clean": "rimraf dist",
     "build": "tsc",
-    "start": "node src/index.ts",
+    "start": "node dist/index.js",
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts"
   },
   "keywords": [],
