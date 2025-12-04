@@ -22,7 +22,7 @@ const storage = new Storage(client);
 const DB_ID = process.env.APPWRITE_DATABASE_ID!;
 // Since you confirmed the collection ID is literally "properties"
 const PROPERTIES_TABLE = "properties";
-const USERS_TABLE = process.env.APPWRITE_USERS_COLLECTION_ID || "users";
+const USERS_TABLE = process.env.APPWRITE_USERTABLE_ID!;
 
 const IMAGE_KEYS = [
   "frontElevation",
