@@ -139,8 +139,9 @@ export async function createProperty(
   payload: any,
   imageFiles?: Record<string, { buffer: Buffer; name: string }>
 ) {
+  // ✅ Validate agent by accountid instead of $id
   const agentRes = await tablesDB.listRows(DB_ID, USERS_TABLE, [
-    Query.equal("$id", String(payload.agentId)),
+    Query.equal("accountid", String(payload.agentId)),
   ]);
   const agentDoc = agentRes.total > 0 ? agentRes.rows[0] : null;
   if (!agentDoc || agentDoc.role !== "agent")
@@ -175,7 +176,7 @@ export async function createProperty(
     country: payload.country || "",
     amenities: toCsv(payload.amenities),
     ...coords,
-    agentId: String(payload.agentId),
+    agentId: String(payload.agentId), // now consistent with accountid
     published: false,
     approvedBy: null,
     approvedAt: null,
