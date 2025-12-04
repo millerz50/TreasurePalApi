@@ -110,7 +110,6 @@ export function getPhoneByAccountId(accountid: string): string | null {
     return null;
   }
 }
-
 // 🆕 Signup: create auth user + profile row
 export async function signupUser(payload: {
   email: string;
@@ -130,8 +129,9 @@ export async function signupUser(payload: {
 }) {
   try {
     const normalizedPhone = normalizePhone(payload.phone);
+    if (DEBUG) console.log("DEBUG normalizedPhone:", normalizedPhone);
 
-    // Create auth user with 4 args only
+    // Build args for Appwrite auth user creation
     const createArgs = [
       ID.unique(),
       payload.email,
@@ -140,29 +140,48 @@ export async function signupUser(payload: {
     ];
     if (DEBUG) console.log("DEBUG users.create args:", createArgs);
 
-    const authUser = await users.create(...createArgs);
+    let authUser;
+    try {
+      authUser = await users.create(...createArgs);
+      if (DEBUG) console.log("DEBUG authUser created:", authUser);
+      savePhone(authUser.$id, normalizedPhone);
+    } catch (err) {
+      logError("users.create", err, { payload, createArgs });
+      throw err;
+    }
 
-    //Save phone to JSON file (not Appwrite)
-    savePhone(authUser.$id, normalizedPhone);
+    let row;
+    try {
+      const rowPayload = {
+        accountid: authUser.$id,
+        email: payload.email.toLowerCase(),
+        firstName: payload.firstName,
+        surname: payload.surname,
+        country: payload.country ?? null,
+        location: payload.location ?? null,
+        role: payload.role ?? "user",
+        status: payload.status ?? "Active",
+        nationalId: payload.nationalId ?? null,
+        bio: payload.bio ?? null,
+        metadata: payload.metadata ?? [],
+        avatarUrl: payload.avatarUrl ?? null,
+        dateOfBirth: payload.dateOfBirth ?? null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      if (DEBUG) console.log("DEBUG tablesDB.createRow payload:", rowPayload);
 
-    // Create profile row linked to auth user
-    const row = await tablesDB.createRow(DB_ID, USERS_TABLE, ID.unique(), {
-      accountid: authUser.$id,
-      email: payload.email.toLowerCase(),
-      firstName: payload.firstName,
-      surname: payload.surname,
-      country: payload.country ?? null,
-      location: payload.location ?? null,
-      role: payload.role ?? "user",
-      status: payload.status ?? "Active",
-      nationalId: payload.nationalId ?? null,
-      bio: payload.bio ?? null,
-      metadata: payload.metadata ?? [],
-      avatarUrl: payload.avatarUrl ?? null,
-      dateOfBirth: payload.dateOfBirth ?? null,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    });
+      row = await tablesDB.createRow(
+        DB_ID,
+        USERS_TABLE,
+        ID.unique(),
+        rowPayload
+      );
+      if (DEBUG) console.log("DEBUG profile row created:", row);
+    } catch (err) {
+      logError("tablesDB.createRow", err, { payload });
+      throw err;
+    }
 
     return { authUser, profile: safeFormat(row) };
   } catch (err: unknown) {
