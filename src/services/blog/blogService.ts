@@ -1,5 +1,5 @@
 import { Client, ID, Query, Storage, TablesDB } from "node-appwrite";
-import { uploadToAppwriteBucket } from "../lib/uploadToAppwrite";
+import { uploadToAppwriteBucket } from "../../lib/uploadToAppwrite";
 
 function getPreviewUrl(fileId: string | null): string | null {
   if (!fileId) return null;

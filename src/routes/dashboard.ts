@@ -1,7 +1,7 @@
 import express, { NextFunction, Response } from "express";
 import { Client, Databases, Query } from "node-appwrite";
 import { verifyToken } from "../middleware/verifyToken";
-import { getAgentDashboardMetrics } from "../services/dashboard";
+import { getAgentDashboardMetrics } from "../services/dashboard/dashboard";
 import { AuthenticatedRequest } from "../types/AuthenticatedRequest";
 
 const router = express.Router();

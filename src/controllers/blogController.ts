@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import * as blogService from "../services/blogService";
+import * as blogService from "../services/blog/blogService";
 
 export async function createBlog(req: Request, res: Response) {
   try {

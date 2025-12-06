@@ -5,7 +5,7 @@ import {
   getPropertyById as svcGetPropertyById,
   listProperties as svcListProperties,
   updateProperty as svcUpdateProperty,
-} from "../services/propertyService";
+} from "../services/property/propertyService";
 
 /**
  * Public: list properties

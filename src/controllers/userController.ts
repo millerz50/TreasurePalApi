@@ -1,6 +1,6 @@
 // server/controllers/userController.ts
 import { Request, Response } from "express";
-import { uploadToAppwriteBucket } from "../services/storageService";
+import { uploadToAppwriteBucket } from "../services/storage/storageService";
 import {
   createUser,
   findByEmail,
@@ -12,7 +12,7 @@ import {
   setRole as svcSetRole,
   setStatus as svcSetStatus,
   updateUser as svcUpdateUser,
-} from "../services/userService";
+} from "../services/user/userService";
 
 // 🆕 Signup handled by server: creates Appwrite auth user + profile row
 export async function signup(req: Request, res: Response) {

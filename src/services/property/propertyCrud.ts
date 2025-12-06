@@ -1,122 +1,14 @@
-// server/services/propertyService.ts
+import { ID, Permission, Query, Role } from "node-appwrite";
+import { uploadToAppwriteBucket } from "../../lib/uploadToAppwrite";
 import {
-  Client,
-  ID,
-  Permission,
-  Query,
-  Role,
-  Storage,
-  TablesDB,
-} from "node-appwrite";
-import { uploadToAppwriteBucket } from "../lib/uploadToAppwrite";
-
-const client = new Client()
-  .setEndpoint(process.env.APPWRITE_ENDPOINT!)
-  .setProject(process.env.APPWRITE_PROJECT_ID!)
-  .setKey(process.env.APPWRITE_API_KEY!);
-
-const tablesDB = new TablesDB(client);
-const storage = new Storage(client);
-
-// ✅ Database and collection IDs
-const DB_ID = process.env.APPWRITE_DATABASE_ID!;
-// Since you confirmed the collection ID is literally "properties"
-const PROPERTIES_TABLE = "properties";
-const USERS_TABLE = process.env.APPWRITE_USERTABLE_ID!;
-
-const IMAGE_KEYS = [
-  "frontElevation",
-  "southView",
-  "westView",
-  "eastView",
-  "floorPlan",
-] as const;
-
-function toCsv(value: any): string {
-  if (!value) return "";
-  if (Array.isArray(value))
-    return value
-      .map(String)
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .join(",");
-  return String(value).trim();
-}
-
-function fromCsv(value: any): string[] {
-  if (!value) return [];
-  return String(value)
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
-
-function parseCoordinates(value: any): {
-  locationLat?: number;
-  locationLng?: number;
-} {
-  if (!value) return {};
-  if (Array.isArray(value) && value.length >= 2) {
-    const lat = Number(value[0]);
-    const lng = Number(value[1]);
-    if (!Number.isNaN(lat) && !Number.isNaN(lng))
-      return { locationLat: lat, locationLng: lng };
-    return {};
-  }
-  if (typeof value === "string" && value.includes(",")) {
-    const [latS, lngS] = value.split(",");
-    const lat = Number(latS);
-    const lng = Number(lngS);
-    if (!Number.isNaN(lat) && !Number.isNaN(lng))
-      return { locationLat: lat, locationLng: lng };
-  }
-  return {};
-}
-
-function getPreviewUrl(fileId: string | null): string | null {
-  if (!fileId) return null;
-  const endpoint = process.env.APPWRITE_ENDPOINT!.replace(/\/$/, "");
-  const bucketId = process.env.APPWRITE_BUCKET_ID!;
-  const projectId = process.env.APPWRITE_PROJECT_ID!;
-  return `${endpoint}/storage/buckets/${bucketId}/files/${fileId}/preview?project=${projectId}`;
-}
-
-function formatProperty(row: any) {
-  const base = {
-    $id: row.$id,
-    title: row.title,
-    price: row.price,
-    location: row.location,
-    address: row.address,
-    rooms: typeof row.rooms === "number" ? row.rooms : Number(row.rooms || 0),
-    description: row.description || "",
-    type: row.type || "",
-    status: row.status || "pending",
-    country: row.country || "",
-    amenities: fromCsv(row.amenities),
-    locationLat: row.locationLat !== undefined ? Number(row.locationLat) : null,
-    locationLng: row.locationLng !== undefined ? Number(row.locationLng) : null,
-    agentId: row.agentId,
-    published: !!row.published,
-    approvedBy: row.approvedBy || null,
-    approvedAt: row.approvedAt || null,
-    createdAt: row.$createdAt,
-    updatedAt: row.$updatedAt,
-  };
-
-  const images: Record<
-    string,
-    { fileId: string | null; previewUrl: string | null }
-  > = {};
-  IMAGE_KEYS.forEach((key) => {
-    const fileId = row[key] || null;
-    images[key] = { fileId, previewUrl: getPreviewUrl(fileId) };
-  });
-
-  return { ...base, images };
-}
-
-// -------------------- CRUD --------------------
+  DB_ID,
+  PROPERTIES_TABLE,
+  storage,
+  tablesDB,
+  USERS_TABLE,
+} from "./client";
+import { formatProperty } from "./formatters";
+import { IMAGE_KEYS, parseCoordinates, toCsv } from "./utils";
 
 export async function listProperties(limit = 100) {
   const res = await tablesDB.listRows(
@@ -137,7 +29,7 @@ export async function createProperty(
   payload: any,
   imageFiles?: Record<string, { buffer: Buffer; name: string }>
 ) {
-  // ✅ Validate agent by accountid
+  // validate agent
   const agentRes = await tablesDB.listRows(DB_ID, USERS_TABLE, [
     Query.equal("accountid", String(payload.agentId)),
   ]);
@@ -178,6 +70,21 @@ export async function createProperty(
     published: false,
     approvedBy: null,
     approvedAt: null,
+
+    // deposit
+    depositAvailable: !!payload.depositAvailable,
+    depositOption: payload.depositOption || "none",
+    depositPercentage: payload.depositPercentage || null,
+
+    // marketing
+    website: payload.website || "",
+    flyers: payload.flyers || "",
+    hireDesigner: !!payload.hireDesigner,
+    designerId: payload.designerId || null,
+    subscriptionPlan: payload.subscriptionPlan || "free",
+    whatsappGroup: payload.whatsappGroup || "",
+    ads: payload.ads || "",
+
     ...imageIds,
   };
 
@@ -185,7 +92,7 @@ export async function createProperty(
     Permission.read(Role.user(payload.agentId)),
     Permission.update(Role.user(payload.agentId)),
     Permission.delete(Role.user(payload.agentId)),
-    Permission.read(Role.any()), // optional public read
+    Permission.read(Role.any()),
     Permission.update(Role.team("admins")),
     Permission.delete(Role.team("admins")),
   ];
@@ -237,6 +144,33 @@ export async function updateProperty(
     }),
     ...coords,
     ...(updates.agentId !== undefined && { agentId: String(updates.agentId) }),
+
+    // deposit
+    ...(updates.depositAvailable !== undefined && {
+      depositAvailable: !!updates.depositAvailable,
+    }),
+    ...(updates.depositOption !== undefined && {
+      depositOption: updates.depositOption,
+    }),
+    ...(updates.depositPercentage !== undefined && {
+      depositPercentage: updates.depositPercentage,
+    }),
+
+    // marketing
+    ...(updates.website !== undefined && { website: updates.website }),
+    ...(updates.flyers !== undefined && { flyers: updates.flyers }),
+    ...(updates.hireDesigner !== undefined && {
+      hireDesigner: !!updates.hireDesigner,
+    }),
+    ...(updates.designerId !== undefined && { designerId: updates.designerId }),
+    ...(updates.subscriptionPlan !== undefined && {
+      subscriptionPlan: updates.subscriptionPlan,
+    }),
+    ...(updates.whatsappGroup !== undefined && {
+      whatsappGroup: updates.whatsappGroup,
+    }),
+    ...(updates.ads !== undefined && { ads: updates.ads }),
+
     ...imageIds,
   };
 

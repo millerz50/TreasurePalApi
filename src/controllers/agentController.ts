@@ -3,7 +3,7 @@ import { NextFunction, Response } from "express";
 import {
   getAgentDashboardMetrics,
   recordAgentMetrics,
-} from "../services/dashboardService";
+} from "../services/dashboard/dashboardService";
 import { AuthenticatedRequest } from "../types/AuthenticatedRequest";
 
 /**

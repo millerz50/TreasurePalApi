@@ -1,11 +1,11 @@
 // server/services/adminService.ts
-import { hashPassword } from "../lib/utils/auth"; // adjust path if needed
+import { hashPassword } from "../../lib/utils/auth"; // adjust path if needed
 import {
   findByEmail,
   getUserById,
   createUser as svcCreateUser,
   updateUser as svcUpdateUser,
-} from "./userService";
+} from "../user/userService";
 
 const ALLOWED_ROLES = new Set(["user", "agent", "admin"]);
 

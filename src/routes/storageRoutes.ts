@@ -1,7 +1,7 @@
 // server/routes/storageRoutes.ts
 import express from "express";
 import multer from "multer";
-import { uploadToAppwriteBucket } from "../services/storageService";
+import { uploadToAppwriteBucket } from "../services/storage/storageService";
 
 const router = express.Router();
 // use memory storage so req.file.buffer exists
