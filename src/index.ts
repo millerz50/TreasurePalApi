@@ -18,6 +18,8 @@ import { logger } from "./lib/logger";
 import agentsRoutes from "./routes/agentRoutes";
 import blogRoutes from "./routes/blogsRoutes";
 import dashboardRouter from "./routes/dashboard";
+import activityRouter from "./routes/activity";
+
 import healthRoutes from "./routes/health";
 import propertiesRoutes from "./routes/propertyRoutes";
 import storageRoutes from "./routes/storageRoutes";
@@ -218,6 +220,9 @@ app.get(
     );
   }
 );
+// Mount API routers before any catch-all 404
+app.use("/api/activity", activityRouter);
+
 
 //
 // Health-check endpoint
