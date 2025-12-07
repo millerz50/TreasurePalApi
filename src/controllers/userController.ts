@@ -23,7 +23,6 @@ export async function signup(req: Request, res: Response) {
       firstName,
       surname,
       role = "user",
-      //  phone, // ✅ just pass through, no validation
       nationalId,
       bio,
       metadata,
@@ -53,7 +52,6 @@ export async function signup(req: Request, res: Response) {
       firstName,
       surname,
       role,
-      // phone, // ✅ passed directly
       nationalId,
       bio,
       avatarFileId,
@@ -68,6 +66,7 @@ export async function signup(req: Request, res: Response) {
     res.status(400).json({ error: message });
   }
 }
+
 // 🔑 Login is client-side via Appwrite SDK
 export async function loginUser(_req: Request, res: Response) {
   res
@@ -83,7 +82,19 @@ export async function getUserProfile(req: Request, res: Response) {
 
     const profile = await getUserByAccountId(accountId);
     if (!profile) return res.status(404).json({ error: "Profile not found" });
-    res.json(profile);
+
+    // ✅ Explicitly map fields so frontend always sees role
+    res.json({
+      userId: profile.$id,
+      email: profile.email,
+      role: profile.role, // ensure role is returned
+      status: profile.status,
+      phone: profile.phone,
+      bio: profile.bio,
+      avatarFileId: profile.avatarFileId ?? null,
+      firstName: profile.firstName ?? "",
+      surname: profile.surname ?? "",
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Server error";
     res.status(500).json({ error: message });
