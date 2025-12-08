@@ -1,8 +1,7 @@
 // server/controllers/userController.ts
-import bcrypt from "bcrypt"; // ✅ use bcrypt for password hashing
+import bcrypt from "bcrypt";
 import { randomUUID } from "crypto";
 import { Request, Response } from "express";
-import { uploadToAppwriteBucket } from "../services/storage/storageService";
 
 import {
   createUser,
@@ -17,7 +16,29 @@ import {
   updateUser as svcUpdateUser,
 } from "../services/user/userService";
 
-// 🆕 Signup handled by server
+import { uploadToAppwriteBucket } from "../services/storage/storageService";
+import { logDebug, logError } from "./utils/logger";
+
+const DEBUG = process.env.DEBUG === "true";
+
+/**
+ * Strict phone sanitizer: returns either a valid E.164 string (+digits up to 15) or null.
+ */
+function sanitizePhone(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  const s = String(value).trim();
+  if (s === "") return null;
+  return /^\+\d{1,15}$/.test(s) ? s : null;
+}
+
+/**
+ * Signup controller
+ * - Validates required fields
+ * - Hashes password
+ * - Sanitizes phone
+ * - Handles optional avatar upload
+ * - Delegates to createUser service with a clean payload
+ */
 export async function signup(req: Request, res: Response) {
   try {
     const {
@@ -29,7 +50,26 @@ export async function signup(req: Request, res: Response) {
       nationalId,
       bio,
       metadata = [],
-    } = req.body;
+      country,
+      location,
+      dateOfBirth,
+      phone: incomingPhone,
+    } = req.body as {
+      email?: string;
+      password?: string;
+      firstName?: string;
+      surname?: string;
+      role?: string;
+      nationalId?: string;
+      bio?: string | null;
+      metadata?: unknown;
+      country?: string;
+      location?: string;
+      dateOfBirth?: string;
+      phone?: string;
+    };
+
+    if (DEBUG) logDebug("signup request body", { body: req.body });
 
     if (!email || !password || !firstName || !surname) {
       return res.status(400).json({ error: "Missing required fields" });
@@ -38,69 +78,76 @@ export async function signup(req: Request, res: Response) {
     const exists = await findByEmail(String(email).toLowerCase());
     if (exists) return res.status(409).json({ error: "User already exists" });
 
-    // ✅ Hash password before saving
+    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // ✅ Handle avatar upload
+    // Optional avatar upload handling
     let avatarFileId: string | undefined;
-    const file = (req as unknown as { file?: Express.Multer.File }).file;
-    if (file) {
-      const result = await uploadToAppwriteBucket(
-        file.buffer,
-        file.originalname
-      );
-      avatarFileId =
-        result?.fileId ?? (typeof result === "string" ? result : undefined);
+    try {
+      const file = (req as unknown as { file?: Express.Multer.File }).file;
+      if (file && typeof uploadToAppwriteBucket === "function") {
+        const result = await uploadToAppwriteBucket(
+          file.buffer,
+          file.originalname
+        );
+        avatarFileId =
+          result?.fileId ?? (typeof result === "string" ? result : undefined);
+      }
+    } catch (err) {
+      logError("avatarUpload", err, { email });
     }
 
-    // ✅ Generate agentId if role is agent
+    // Generate agent ID if role is agent
     let agentId: string | undefined;
-    if (role === "agent") {
-      agentId = randomUUID();
-    }
+    if (role === "agent") agentId = randomUUID();
 
-    // ✅ Build full user profile object
-    const newUser = {
-      $id: randomUUID(),
+    // Sanitize phone strictly
+    const sanitizedPhone = sanitizePhone(incomingPhone);
+    if (DEBUG) logDebug("sanitizedPhone (controller)", { sanitizedPhone });
+
+    // Build payload that matches the service signature
+    const servicePayload = {
       email: String(email).toLowerCase(),
-      firstName,
-      surname,
-      role,
-      status: "Active",
-      nationalId,
-      imageFileId: avatarFileId ?? undefined,
-      bio,
-      metadata,
-      accountid: randomUUID(),
       password: hashedPassword,
-      dateOfBirth: undefined,
-      phone: undefined,
-      agentID: agentId,
-      $createdAt: new Date().toISOString(),
-      $updatedAt: new Date().toISOString(),
-      $permissions: [],
-      $databaseId: "treasuredataid",
-      $tableId: "userid",
+      firstName: String(firstName),
+      surname: String(surname),
+      country: country ?? undefined,
+      location: location ?? undefined,
+      role: role ?? "user",
+      status: "Active",
+      nationalId: nationalId ?? undefined,
+      bio: bio ?? undefined,
+      metadata: Array.isArray(metadata) ? metadata : [],
+      avatarUrl: avatarFileId ?? undefined,
+      dateOfBirth: dateOfBirth ?? undefined,
+      // pass undefined when phone is null so TypeScript and Appwrite receive optional string
+      phone: sanitizedPhone ?? undefined,
+      agentId: agentId ?? undefined,
     };
 
-    const user = await createUser(newUser);
+    if (DEBUG) logDebug("servicePayload to createUser", { servicePayload });
+
+    // Delegate to service which handles Appwrite/tables logic
+    const user = await createUser(servicePayload as any);
 
     return res.status(201).json(user);
   } catch (err) {
-    console.error("Signup failed:", err);
+    logError("signup", err, { body: req.body });
     const message = err instanceof Error ? err.message : "Signup failed";
     return res.status(400).json({ error: message });
   }
 }
 
-// 🔑 Login is client-side via Appwrite SDK
+/* -------------------------
+   Other exported handlers
+   ------------------------- */
+
 export async function loginUser(_req: Request, res: Response) {
   res
     .status(501)
     .json({ error: "Login handled by Appwrite Accounts; use client SDK" });
 }
 
-// 👤 Current user profile
 export async function getUserProfile(req: Request, res: Response) {
   try {
     const accountId = (req as any).accountId;
@@ -126,7 +173,6 @@ export async function getUserProfile(req: Request, res: Response) {
   }
 }
 
-// ✏️ Edit user (excluding role/status)
 export async function editUser(req: Request, res: Response) {
   try {
     const targetId = req.params.id;
@@ -142,7 +188,6 @@ export async function editUser(req: Request, res: Response) {
   }
 }
 
-// ❌ Delete user
 export async function deleteUser(req: Request, res: Response) {
   try {
     const targetId = req.params.id;
@@ -154,7 +199,6 @@ export async function deleteUser(req: Request, res: Response) {
   }
 }
 
-// 📋 List all users
 export async function getAllUsers(req: Request, res: Response) {
   try {
     const limit = Number(req.query.limit ?? 100);
@@ -166,7 +210,6 @@ export async function getAllUsers(req: Request, res: Response) {
   }
 }
 
-// 🔎 Get user by ID
 export async function getUserById(req: Request, res: Response) {
   try {
     const user = await svcGetUserById(req.params.id);
@@ -178,7 +221,6 @@ export async function getUserById(req: Request, res: Response) {
   }
 }
 
-// ✏️ Update user
 export async function updateUser(req: Request, res: Response) {
   try {
     const updates = req.body;
@@ -190,7 +232,6 @@ export async function updateUser(req: Request, res: Response) {
   }
 }
 
-// 🔧 Set role
 export async function setRole(req: Request, res: Response) {
   try {
     const { role } = req.body;
@@ -203,7 +244,6 @@ export async function setRole(req: Request, res: Response) {
   }
 }
 
-// 🔧 Set status
 export async function setStatus(req: Request, res: Response) {
   try {
     const { status } = req.body;
@@ -216,7 +256,6 @@ export async function setStatus(req: Request, res: Response) {
   }
 }
 
-// 👥 List agents
 export async function getAgents(_req: Request, res: Response) {
   try {
     const agents = await svcListAgents();
