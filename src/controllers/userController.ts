@@ -1,6 +1,9 @@
 // server/controllers/userController.ts
+import bcrypt from "bcrypt"; // ✅ use bcrypt for password hashing
+import { randomUUID } from "crypto";
 import { Request, Response } from "express";
 import { uploadToAppwriteBucket } from "../services/storage/storageService";
+
 import {
   createUser,
   findByEmail,
@@ -14,7 +17,7 @@ import {
   updateUser as svcUpdateUser,
 } from "../services/user/userService";
 
-// 🆕 Signup handled by server: creates Appwrite auth user + profile row
+// 🆕 Signup handled by server
 export async function signup(req: Request, res: Response) {
   try {
     const {
@@ -25,7 +28,7 @@ export async function signup(req: Request, res: Response) {
       role = "user",
       nationalId,
       bio,
-      metadata,
+      metadata = [],
     } = req.body;
 
     if (!email || !password || !firstName || !surname) {
@@ -35,6 +38,10 @@ export async function signup(req: Request, res: Response) {
     const exists = await findByEmail(String(email).toLowerCase());
     if (exists) return res.status(409).json({ error: "User already exists" });
 
+    // ✅ Hash password before saving
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // ✅ Handle avatar upload
     let avatarFileId: string | undefined;
     const file = (req as unknown as { file?: Express.Multer.File }).file;
     if (file) {
@@ -46,24 +53,43 @@ export async function signup(req: Request, res: Response) {
         result?.fileId ?? (typeof result === "string" ? result : undefined);
     }
 
-    const payload = {
+    // ✅ Generate agentId if role is agent
+    let agentId: string | undefined;
+    if (role === "agent") {
+      agentId = randomUUID();
+    }
+
+    // ✅ Build full user profile object
+    const newUser = {
+      $id: randomUUID(),
       email: String(email).toLowerCase(),
-      password: String(password),
       firstName,
       surname,
       role,
-      nationalId,
-      bio,
-      avatarFileId,
-      metadata,
       status: "Active",
+      nationalId,
+      imageFileId: avatarFileId ?? undefined,
+      bio,
+      metadata,
+      accountid: randomUUID(),
+      password: hashedPassword,
+      dateOfBirth: undefined,
+      phone: undefined,
+      agentID: agentId,
+      $createdAt: new Date().toISOString(),
+      $updatedAt: new Date().toISOString(),
+      $permissions: [],
+      $databaseId: "treasuredataid",
+      $tableId: "userid",
     };
 
-    const user = await createUser(payload);
-    res.status(201).json(user);
+    const user = await createUser(newUser);
+
+    return res.status(201).json(user);
   } catch (err) {
+    console.error("Signup failed:", err);
     const message = err instanceof Error ? err.message : "Signup failed";
-    res.status(400).json({ error: message });
+    return res.status(400).json({ error: message });
   }
 }
 
@@ -74,20 +100,19 @@ export async function loginUser(_req: Request, res: Response) {
     .json({ error: "Login handled by Appwrite Accounts; use client SDK" });
 }
 
-// 👤 Current user profile based on Appwrite accountId (from middleware)
+// 👤 Current user profile
 export async function getUserProfile(req: Request, res: Response) {
   try {
-    const accountId = req.accountId;
+    const accountId = (req as any).accountId;
     if (!accountId) return res.status(401).json({ error: "Unauthorized" });
 
     const profile = await getUserByAccountId(accountId);
     if (!profile) return res.status(404).json({ error: "Profile not found" });
 
-    // ✅ Explicitly map fields so frontend always sees role
     res.json({
       userId: profile.$id,
       email: profile.email,
-      role: profile.role, // ensure role is returned
+      role: profile.role,
       status: profile.status,
       phone: profile.phone,
       bio: profile.bio,

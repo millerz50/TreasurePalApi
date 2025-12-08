@@ -11,7 +11,8 @@
     "resolveJsonModule": true,
     "forceConsistentCasingInFileNames": true,
     "noImplicitAny": true,
-    "typeRoots": ["./node_modules/@types", "./src/types"] // ✅ moved inside compilerOptions
+    "typeRoots": ["./node_modules/@types", "./src/types"],
+    "types": ["node"] // 👈 add this line
   },
   "include": ["src", "src/scripts"]
 }
