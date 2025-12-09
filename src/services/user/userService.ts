@@ -43,8 +43,6 @@ export interface UserRow {
   location?: string | null;
   avatarUrl?: string | null;
   dateOfBirth?: string | null;
-  createdAt?: string;
-  updatedAt?: string;
   [key: string]: unknown;
 }
 
@@ -119,8 +117,6 @@ export async function signupUser(payload: {
     metadata: Array.isArray(payload.metadata) ? [...payload.metadata] : [],
     avatarUrl: payload.avatarUrl ?? null,
     dateOfBirth: payload.dateOfBirth ?? null,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
   };
 
   logStep("Prepared DB rowPayload", rowPayload);
