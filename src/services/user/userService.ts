@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import bcrypt from "bcrypt";
-import { ID, Query, TablesDB } from "node-appwrite";
+import sdk, { ID, Query, TablesDB } from "node-appwrite";
 
 // ----------------------------
 // INIT APPWRITE CLIENT
@@ -13,6 +13,7 @@ const client = new Client()
   .setKey(process.env.APPWRITE_API_KEY!);
 
 export const tablesDB = new TablesDB(client);
+const accounts = new sdk.Account(client);
 
 const DB_ID = process.env.APPWRITE_DATABASE_ID!;
 const USERS_TABLE = process.env.APPWRITE_USERTABLE_ID || "user";
@@ -43,6 +44,7 @@ export interface UserRow {
   location?: string | null;
   avatarUrl?: string | null;
   dateOfBirth?: string | null;
+  phone?: string | null;
   [key: string]: unknown;
 }
 
@@ -75,7 +77,7 @@ function logError(
 }
 
 // ----------------------------
-// CREATE USER WITHOUT Appwrite Auth
+// CREATE USER WITH Appwrite AUTH
 // ----------------------------
 export async function signupUser(payload: {
   email: string;
@@ -91,21 +93,33 @@ export async function signupUser(payload: {
   metadata?: any[];
   avatarUrl?: string;
   dateOfBirth?: string;
+  phone?: string;
 }) {
   logStep("START signupUser()", payload);
 
-  // 1. Generate a unique user ID
-  const userId = ID.unique();
-
-  // 2. Hash password
+  // 1. Hash password (for DB storage)
   const hashedPassword = await bcrypt.hash(payload.password, 10);
-  logStep("Password hashed");
 
-  // 3. Build DB row
+  // 2. Create Appwrite Auth user
+  let authUser;
+  try {
+    authUser = await accounts.create(
+      ID.unique(), // unique account ID
+      payload.email,
+      payload.password,
+      `${payload.firstName} ${payload.surname}` // name
+    );
+    logStep("Auth user created", authUser);
+  } catch (err) {
+    logError("accounts.create FAILED", err, { email: payload.email });
+    throw err;
+  }
+
+  // 3. Build DB row (profile)
   const rowPayload = {
-    accountid: userId,
+    accountid: authUser.$id,
     email: payload.email.toLowerCase(),
-    password: hashedPassword,
+    password: hashedPassword, // hashed for internal DB only
     firstName: payload.firstName,
     surname: payload.surname,
     country: payload.country ?? null,
@@ -117,38 +131,26 @@ export async function signupUser(payload: {
     metadata: Array.isArray(payload.metadata) ? [...payload.metadata] : [],
     avatarUrl: payload.avatarUrl ?? null,
     dateOfBirth: payload.dateOfBirth ?? null,
+    phone: payload.phone ?? null,
   };
 
   logStep("Prepared DB rowPayload", rowPayload);
 
-  // 4. Write profile into DB
+  // 4. Save profile in DB
   let row;
   const rowId = ID.unique();
-
   try {
-    logStep("Calling tablesDB.createRow()...", {
-      DB_ID,
-      USERS_TABLE,
-      rowId,
-      rowPayload,
-    });
-
     row = await tablesDB.createRow(DB_ID, USERS_TABLE, rowId, rowPayload);
     logStep("Profile row created successfully", row);
   } catch (err) {
-    logError("tablesDB.createRow FAILED", err, {
-      rowPayload,
-      DB_ID,
-      USERS_TABLE,
-    });
-    throw err;
+    logError("tablesDB.createRow FAILED", err, { rowPayload });
+    // rollback auth user if DB save fails
   }
+  try {
+    await accounts.deleteSession(authUser.$id);
+  } catch {}
 
-  logStep("Signup SUCCESS. Returning response...", {
-    profile: safeFormat(row),
-  });
-
-  return { profile: safeFormat(row) };
+  return { authUser, profile: safeFormat(row) };
 }
 
 export async function createUser(payload: Parameters<typeof signupUser>[0]) {
@@ -260,10 +262,8 @@ export async function listAgents(limit = 100, offset = 0) {
       [Query.equal("role", "agent")],
       String(limit)
     );
-
     const rows = Array.isArray(res.rows) ? res.rows : [];
     const agentsList = rows.slice(offset, offset + limit).map(safeFormat);
-
     return { total: res.total ?? agentsList.length, agents: agentsList };
   } catch (err) {
     logError("listAgents", err, { limit, offset });
