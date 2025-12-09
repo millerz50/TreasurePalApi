@@ -1,6 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import bcrypt from "bcrypt";
-import sdk, { Client, ID, Query, TablesDB } from "node-appwrite";
+import sdk, {
+  Client,
+  ID,
+  Permission,
+  Query,
+  Role,
+  TablesDB,
+} from "node-appwrite";
 import { uploadToAppwriteBucket } from "../../lib/uploadToAppwrite";
 
 // ----------------------------
@@ -91,13 +98,20 @@ export async function signupUser(payload: {
   bio?: string;
   metadata?: any[];
   avatarUrl?: string;
+  imageFileId?: string;
   dateOfBirth?: string;
   phone?: string;
   avatarFile?: File; // optional file upload
 }) {
   logStep("START signupUser()", payload);
 
-  // 1. Hash password (for DB storage)
+  // 0. Check if user already exists
+  const existingUser = await findByEmail(payload.email);
+  if (existingUser) {
+    throw new Error("User already exists with this email.");
+  }
+
+  // 1. Hash password
   const hashedPassword = await bcrypt.hash(payload.password, 10);
 
   // 2. Create Appwrite Auth user
@@ -110,31 +124,36 @@ export async function signupUser(payload: {
       `${payload.firstName} ${payload.surname}`
     );
     logStep("Auth user created", authUser);
+
+    // Save phone if provided
+    if (payload.phone) {
+      await accounts.updatePhone(authUser.$id, payload.phone);
+    }
   } catch (err) {
     logError("accounts.create FAILED", err, { email: payload.email });
     throw err;
   }
 
-  // 3. Handle avatar file upload (optional)
+  // 3. Handle avatar upload
   let avatarUrl = payload.avatarUrl ?? null;
   if (payload.avatarFile) {
     try {
-      const arrayBuffer = await payload.avatarFile.arrayBuffer(); // browser File -> ArrayBuffer
-      const buffer = Buffer.from(arrayBuffer); // ArrayBuffer -> Node Buffer
-
+      const arrayBuffer = await payload.avatarFile.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
       const uploadedFile = await uploadToAppwriteBucket(
         buffer,
         payload.avatarFile.name
       );
-
-      avatarUrl = uploadedFile.fileId; // assuming uploadToAppwriteBucket returns { fileId, previewUrl }
+      avatarUrl = uploadedFile.fileId;
       logStep("Avatar uploaded", avatarUrl);
     } catch (err) {
       logError("uploadToAppwriteBucket FAILED", err);
     }
+  } else if (payload.imageFileId) {
+    avatarUrl = payload.imageFileId;
   }
 
-  // 4. Build DB row (profile)
+  // 4. Build DB row payload
   const rowPayload: UserRow = {
     accountid: authUser.$id,
     email: payload.email.toLowerCase(),
@@ -155,15 +174,19 @@ export async function signupUser(payload: {
 
   logStep("Prepared DB rowPayload", rowPayload);
 
-  // 5. Save profile in DB
+  // 5. Save profile in DB with permissions
   let row;
   const rowId = ID.unique();
   try {
-    row = await tablesDB.createRow(DB_ID, USERS_TABLE, rowId, rowPayload);
+    row = await tablesDB.createRow(DB_ID, USERS_TABLE, rowId, rowPayload, [
+      Permission.read(Role.user(authUser.$id)),
+      Permission.update(Role.user(authUser.$id)),
+      Permission.delete(Role.user(authUser.$id)),
+    ]);
     logStep("Profile row created successfully", row);
   } catch (err) {
     logError("tablesDB.createRow FAILED", err, { rowPayload });
-    // rollback auth user if DB save fails
+    // rollback auth user
     try {
       await accounts.deleteSession(authUser.$id);
     } catch {}
