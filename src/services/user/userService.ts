@@ -8,7 +8,6 @@ import sdk, {
   Role,
   TablesDB,
 } from "node-appwrite";
-import { uploadToAppwriteBucket } from "../../lib/uploadToAppwrite";
 
 // ----------------------------
 // INIT APPWRITE CLIENT
@@ -48,9 +47,9 @@ export interface UserRow {
   metadata?: any[];
   country?: string | null;
   location?: string | null;
-  avatarUrl?: string | null;
   dateOfBirth?: string | null;
   phone?: string | null;
+  agentId?: string | null;
   [key: string]: unknown;
 }
 
@@ -97,11 +96,8 @@ export async function signupUser(payload: {
   nationalId?: string;
   bio?: string;
   metadata?: any[];
-  avatarUrl?: string;
-  imageFileId?: string;
   dateOfBirth?: string;
   phone?: string;
-  avatarFile?: File; // optional file upload
 }) {
   logStep("START signupUser()", payload);
 
@@ -134,26 +130,7 @@ export async function signupUser(payload: {
     throw err;
   }
 
-  // 3. Handle avatar upload
-  let avatarUrl = payload.avatarUrl ?? null;
-  if (payload.avatarFile) {
-    try {
-      const arrayBuffer = await payload.avatarFile.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
-      const uploadedFile = await uploadToAppwriteBucket(
-        buffer,
-        payload.avatarFile.name
-      );
-      avatarUrl = uploadedFile.fileId;
-      logStep("Avatar uploaded", avatarUrl);
-    } catch (err) {
-      logError("uploadToAppwriteBucket FAILED", err);
-    }
-  } else if (payload.imageFileId) {
-    avatarUrl = payload.imageFileId;
-  }
-
-  // 4. Build DB row payload
+  // 3. Build DB row payload (remove avatarUrl, add agentId)
   const rowPayload: UserRow = {
     accountid: authUser.$id,
     email: payload.email.toLowerCase(),
@@ -167,14 +144,14 @@ export async function signupUser(payload: {
     nationalId: payload.nationalId ?? null,
     bio: payload.bio ?? null,
     metadata: Array.isArray(payload.metadata) ? [...payload.metadata] : [],
-    avatarUrl,
     dateOfBirth: payload.dateOfBirth ?? null,
     phone: payload.phone ?? null,
+    agentId: ID.unique(), // generate a unique agentId
   };
 
   logStep("Prepared DB rowPayload", rowPayload);
 
-  // 5. Save profile in DB with permissions
+  // 4. Save profile in DB with permissions
   let row;
   const rowId = ID.unique();
   try {
