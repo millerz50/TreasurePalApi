@@ -3,7 +3,6 @@ import bcrypt from "bcrypt";
 import { randomUUID } from "crypto";
 import { Request, Response } from "express";
 import fs from "fs/promises";
-import sdk from "node-appwrite";
 import path from "path";
 
 import {
@@ -20,16 +19,19 @@ import {
 } from "../services/user/userService";
 
 import { uploadToAppwriteBucket } from "../services/storage/storageService";
-import { logDebug, logError } from "./utils/logger";
+import { logError } from "./utils/logger";
 
 const DEBUG = process.env.DEBUG === "true";
-
-// Path to JSON file
 const dbFile = path.join(__dirname, "phones.json");
 
-/**
- * Strict phone sanitizer: returns either a valid E.164 string (+digits up to 15) or null.
- */
+// ----------------------------
+// Utils
+// ----------------------------
+function logStep(step: string, data?: any) {
+  if (DEBUG) console.log(`=== STEP: ${step} ===`, data ?? "");
+}
+
+// Strict phone sanitizer: E.164 format (+ up to 15 digits)
 function sanitizePhone(value: unknown): string | null {
   if (!value) return null;
   const s = String(value).trim();
@@ -37,15 +39,7 @@ function sanitizePhone(value: unknown): string | null {
   return /^\+\d{1,15}$/.test(normalized) ? normalized : null;
 }
 
-// Initialize Appwrite client (server-side)
-const client = new sdk.Client()
-  .setEndpoint(process.env.APPWRITE_ENDPOINT as string)
-  .setProject(process.env.APPWRITE_PROJECT_ID as string)
-  .setKey(process.env.APPWRITE_API_KEY as string);
-
-/**
- * Save a phone number to a JSON file
- */
+// Save phone locally in JSON
 async function savePhoneToExternalDB(userId: string, phone: string) {
   try {
     let data: Record<string, string> = {};
@@ -57,16 +51,16 @@ async function savePhoneToExternalDB(userId: string, phone: string) {
     }
     data[userId] = phone;
     await fs.writeFile(dbFile, JSON.stringify(data, null, 2), "utf-8");
-    if (DEBUG) console.log(`Saved phone for user ${userId}`);
+    logStep("Saved phone locally", { userId, phone });
   } catch (err) {
-    console.error("Failed to save phone:", err);
+    logError("savePhoneToExternalDB", err, { userId, phone });
     throw err;
   }
 }
 
-/* --------------------------
-   Signup handler
---------------------------- */
+// ----------------------------
+// Signup handler
+// ----------------------------
 export async function signup(req: Request, res: Response) {
   try {
     const {
@@ -95,11 +89,11 @@ export async function signup(req: Request, res: Response) {
       phone?: string;
     };
 
+    // Validate required fields
     if (!email || !password || !firstName || !surname) {
       return res.status(400).json({ error: "Missing required fields" });
     }
-
-    if (DEBUG) logDebug("signup request body", { body: req.body });
+    logStep("Signup request received", { email, firstName, surname, role });
 
     // Check if user already exists
     const exists = await findByEmail(email.toLowerCase());
@@ -107,6 +101,7 @@ export async function signup(req: Request, res: Response) {
 
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
+    logStep("Password hashed");
 
     // Optional avatar upload
     let avatarFileId: string | undefined;
@@ -119,17 +114,19 @@ export async function signup(req: Request, res: Response) {
         );
         avatarFileId =
           result?.fileId ?? (typeof result === "string" ? result : undefined);
+        logStep("Avatar uploaded", { avatarFileId });
       }
     } catch (err) {
-      logError("avatarUpload", err, { email });
+      logError("avatarUpload failed", err, { email });
     }
 
     // Generate agent ID if role is agent
     const agentId = role === "agent" ? randomUUID() : undefined;
+    logStep("Generated agent ID if applicable", { agentId });
 
     // Sanitize phone locally (do NOT send to Appwrite)
     const phone = sanitizePhone(incomingPhone);
-    if (DEBUG) logDebug("sanitized E.164 phone (kept local only)", { phone });
+    logStep("Sanitized phone", { phone });
 
     // Build payload for Appwrite (exclude phone)
     const servicePayload = {
@@ -149,31 +146,40 @@ export async function signup(req: Request, res: Response) {
     };
 
     // Create user in Appwrite
-    const user = await createUser(servicePayload);
+    let user;
+    try {
+      user = await createUser(servicePayload);
+      logStep("Created Appwrite user", user);
+    } catch (err) {
+      logError("createUser failed", err, { servicePayload });
+      return res.status(500).json({ error: "Failed to create user" });
+    }
 
+    // Save phone in external JSON
     if (phone && user.profile?.$id) {
       try {
         await savePhoneToExternalDB(user.profile.$id, phone);
       } catch (err) {
-        logError("savePhoneToExternalDB", err, {
+        logError("Failed to save phone", err, {
           userId: user.profile.$id,
           phone,
         });
       }
     }
 
-    return res.status(201).json(user);
+    // Success response
+    return res
+      .status(201)
+      .json({ authUser: user.authUser, profile: user.profile });
   } catch (err) {
-    logError("signup", err, { body: req.body });
-    const message = err instanceof Error ? err.message : "Signup failed";
-    return res.status(400).json({ error: message });
+    logError("signup handler failed", err);
+    return res.status(500).json({ error: "Internal server error" });
   }
 }
 
-/* --------------------------
-   Other handlers
---------------------------- */
-
+// ----------------------------
+// Other controllers
+// ----------------------------
 export async function loginUser(_req: Request, res: Response) {
   res
     .status(501)
@@ -189,15 +195,11 @@ export async function getUserProfile(req: Request, res: Response) {
     if (!profile) return res.status(404).json({ error: "Profile not found" });
 
     // Load phone from JSON DB
-
     let phone: string | undefined;
-
     try {
       const fileContent = await fs.readFile(dbFile, "utf-8");
       const data = JSON.parse(fileContent) as Record<string, string>;
-      if (profile?.$id) {
-        phone = data[profile.$id];
-      }
+      if (profile?.$id) phone = data[profile.$id];
     } catch (err) {
       if (DEBUG) console.error("Failed to read phone JSON:", err);
     }
@@ -209,13 +211,14 @@ export async function getUserProfile(req: Request, res: Response) {
       status: profile.status,
       phone: phone ?? null,
       bio: profile.bio,
-      avatarFileId: profile.avatarFileId ?? null,
+      avatarFileId: profile.avatarUrl ?? null,
       firstName: profile.firstName ?? "",
       surname: profile.surname ?? "",
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Server error";
-    res.status(500).json({ error: message });
+    res
+      .status(500)
+      .json({ error: err instanceof Error ? err.message : "Server error" });
   }
 }
 
@@ -225,12 +228,12 @@ export async function editUser(req: Request, res: Response) {
     const updates = { ...req.body };
     delete (updates as any).role;
     delete (updates as any).status;
-
     const updated = await svcUpdateUser(targetId, updates);
     res.json(updated);
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Update failed";
-    res.status(400).json({ error: message });
+    res
+      .status(400)
+      .json({ error: err instanceof Error ? err.message : "Update failed" });
   }
 }
 
@@ -240,8 +243,9 @@ export async function deleteUser(req: Request, res: Response) {
     await svcDeleteUser(targetId);
     res.status(204).send();
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Delete failed";
-    res.status(400).json({ error: message });
+    res
+      .status(400)
+      .json({ error: err instanceof Error ? err.message : "Delete failed" });
   }
 }
 
@@ -251,8 +255,9 @@ export async function getAllUsers(req: Request, res: Response) {
     const result = await svcListUsers(limit);
     res.json(result);
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Server error";
-    res.status(500).json({ error: message });
+    res
+      .status(500)
+      .json({ error: err instanceof Error ? err.message : "Server error" });
   }
 }
 
@@ -262,8 +267,9 @@ export async function getUserById(req: Request, res: Response) {
     if (!user) return res.status(404).json({ error: "Not found" });
     res.json(user);
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Server error";
-    res.status(500).json({ error: message });
+    res
+      .status(500)
+      .json({ error: err instanceof Error ? err.message : "Server error" });
   }
 }
 
@@ -273,8 +279,9 @@ export async function updateUser(req: Request, res: Response) {
     const updated = await svcUpdateUser(req.params.id, updates);
     res.json(updated);
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Update failed";
-    res.status(400).json({ error: message });
+    res
+      .status(400)
+      .json({ error: err instanceof Error ? err.message : "Update failed" });
   }
 }
 
@@ -285,8 +292,9 @@ export async function setRole(req: Request, res: Response) {
     const updated = await svcSetRole(req.params.id, role);
     res.json(updated);
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Set role failed";
-    res.status(400).json({ error: message });
+    res
+      .status(400)
+      .json({ error: err instanceof Error ? err.message : "Set role failed" });
   }
 }
 
@@ -297,8 +305,9 @@ export async function setStatus(req: Request, res: Response) {
     const updated = await svcSetStatus(req.params.id, status);
     res.json(updated);
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Set status failed";
-    res.status(400).json({ error: message });
+    res.status(400).json({
+      error: err instanceof Error ? err.message : "Set status failed",
+    });
   }
 }
 
@@ -307,8 +316,8 @@ export async function getAgents(_req: Request, res: Response) {
     const agents = await svcListAgents();
     res.json(agents);
   } catch (err) {
-    const message =
-      err instanceof Error ? err.message : "Failed to fetch agents";
-    res.status(500).json({ error: message });
+    res.status(500).json({
+      error: err instanceof Error ? err.message : "Failed to fetch agents",
+    });
   }
 }
