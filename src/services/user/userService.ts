@@ -125,11 +125,10 @@ export async function signupUser(payload: {
   metadata?: string[];
   avatarUrl?: string;
   dateOfBirth?: string;
-  phone?: string;
+  phone?: string; // EXPECTS already E.164 from frontend hook
 }) {
   try {
-    const normalizedPhone = normalizePhone(payload.phone);
-    if (DEBUG) console.log("DEBUG normalizedPhone:", normalizedPhone);
+    if (DEBUG) console.log("DEBUG incoming phone:", payload.phone);
 
     // Build args for Appwrite auth user creation
     const createArgs = [
@@ -138,13 +137,16 @@ export async function signupUser(payload: {
       payload.password,
       `${payload.firstName} ${payload.surname}`,
     ];
+
     if (DEBUG) console.log("DEBUG users.create args:", createArgs);
 
     let authUser;
     try {
       authUser = await users.create(...createArgs);
       if (DEBUG) console.log("DEBUG authUser created:", authUser);
-      savePhone(authUser.$id, normalizedPhone);
+
+      // Store phone exactly as frontend formatted it (already E.164)
+      savePhone(authUser.$id, payload.phone ?? null);
     } catch (err) {
       logError("users.create", err, { payload, createArgs });
       throw err;
@@ -169,6 +171,7 @@ export async function signupUser(payload: {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
+
       if (DEBUG) console.log("DEBUG tablesDB.createRow payload:", rowPayload);
 
       row = await tablesDB.createRow(
@@ -177,6 +180,7 @@ export async function signupUser(payload: {
         ID.unique(),
         rowPayload
       );
+
       if (DEBUG) console.log("DEBUG profile row created:", row);
     } catch (err) {
       logError("tablesDB.createRow", err, { payload });
@@ -190,7 +194,7 @@ export async function signupUser(payload: {
   }
 }
 
-// ✅ Alias for backwards compatibility
+// Alias
 export async function createUser(payload: Parameters<typeof signupUser>[0]) {
   return signupUser(payload);
 }

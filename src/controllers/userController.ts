@@ -81,10 +81,10 @@ export async function signup(req: Request, res: Response) {
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Optional avatar upload handling
+    // Optional avatar upload
     let avatarFileId: string | undefined;
     try {
-      const file = (req as unknown as { file?: Express.Multer.File }).file;
+      const file = (req as any).file as Express.Multer.File | undefined;
       if (file && typeof uploadToAppwriteBucket === "function") {
         const result = await uploadToAppwriteBucket(
           file.buffer,
@@ -97,15 +97,15 @@ export async function signup(req: Request, res: Response) {
       logError("avatarUpload", err, { email });
     }
 
-    // Generate agent ID if role is agent
+    // Generate agent id
     let agentId: string | undefined;
     if (role === "agent") agentId = randomUUID();
 
-    // Sanitize phone strictly
-    const sanitizedPhone = sanitizePhone(incomingPhone);
-    if (DEBUG) logDebug("sanitizedPhone (controller)", { sanitizedPhone });
+    // ✔ Use phone directly — already E.164 formatted by frontend hook
+    const phone = incomingPhone || undefined;
+    if (DEBUG) logDebug("incoming E.164 phone (controller)", { phone });
 
-    // Build payload that matches the service signature
+    // Build payload for service
     const servicePayload = {
       email: String(email).toLowerCase(),
       password: hashedPassword,
@@ -120,15 +120,13 @@ export async function signup(req: Request, res: Response) {
       metadata: Array.isArray(metadata) ? metadata : [],
       avatarUrl: avatarFileId ?? undefined,
       dateOfBirth: dateOfBirth ?? undefined,
-      // pass undefined when phone is null so TypeScript and Appwrite receive optional string
-      phone: sanitizedPhone ?? undefined,
+      phone, // ✔ just pass directly
       agentId: agentId ?? undefined,
     };
 
     if (DEBUG) logDebug("servicePayload to createUser", { servicePayload });
 
-    // Delegate to service which handles Appwrite/tables logic
-    const user = await createUser(servicePayload as any);
+    const user = await createUser(servicePayload);
 
     return res.status(201).json(user);
   } catch (err) {
