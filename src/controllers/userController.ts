@@ -29,7 +29,9 @@ function sanitizePhone(value: unknown): string | null {
   if (value === undefined || value === null) return null;
   const s = String(value).trim();
   if (s === "") return null;
-  return /^\+\d{1,15}$/.test(s) ? s : null;
+  // Normalize fullwidth plus (U+FF0B) to ASCII plus and strip formatting
+  const normalized = s.replace(/^[\uFF0B]/, "+").replace(/[ \-\(\)]/g, "");
+  return /^\+\d{1,15}$/.test(normalized) ? normalized : null;
 }
 
 // Initialize Appwrite client (server-side)
@@ -104,8 +106,13 @@ export async function signup(req: Request, res: Response) {
     if (role === "agent") agentId = randomUUID();
 
     // Sanitize phone (E.164 format, e.g. +263771234567)
-    const phone = sanitizePhone(incomingPhone) ?? undefined;
-    if (DEBUG) logDebug("sanitized E.164 phone", { phone });
+    const phone = sanitizePhone(incomingPhone);
+    if (DEBUG) {
+      logDebug("sanitized E.164 phone", {
+        phone,
+        charCodes: phone ? [...phone].map((c) => c.charCodeAt(0)) : null,
+      });
+    }
 
     // Build payload for user creation (exclude phone here)
     const servicePayload = {
@@ -137,6 +144,28 @@ export async function signup(req: Request, res: Response) {
         await account.updatePhone(phone, password);
       } catch (err) {
         logError("updatePhone", err, { email, phone });
+        // Fallback: store phone in metadata if Appwrite rejects it
+        try {
+          const targetId = user.authUser?.$id ?? user.profile?.id;
+          if (targetId) {
+            await svcUpdateUser(targetId, {
+              metadata: [
+                ...servicePayload.metadata,
+                { key: "unverifiedPhone", value: phone },
+              ],
+            });
+          } else {
+            logError("fallbackPhoneMetadata", new Error("No valid user ID"), {
+              email,
+              phone,
+            });
+          }
+        } catch (metaErr) {
+          logError("fallbackPhoneMetadata", metaErr, {
+            userId: user.authUser?.$id ?? user.profile?.id,
+            phone,
+          });
+        }
       }
     }
 
