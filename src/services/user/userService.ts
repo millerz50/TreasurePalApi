@@ -1,16 +1,18 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Client, ID, Query, TablesDB, Users } from "node-appwrite";
+import bcrypt from "bcrypt";
+import { ID, Query, TablesDB } from "node-appwrite";
 
 // ----------------------------
 // INIT APPWRITE CLIENT
 // ----------------------------
+import { Client } from "node-appwrite";
+
 const client = new Client()
   .setEndpoint(process.env.APPWRITE_ENDPOINT!)
   .setProject(process.env.APPWRITE_PROJECT_ID!)
   .setKey(process.env.APPWRITE_API_KEY!);
 
-const tablesDB = new TablesDB(client);
-const users = new Users(client);
+export const tablesDB = new TablesDB(client);
 
 const DB_ID = process.env.APPWRITE_DATABASE_ID!;
 const USERS_TABLE = process.env.APPWRITE_USERTABLE_ID || "user";
@@ -29,6 +31,7 @@ export interface UserRow {
   $id?: string;
   accountid?: string;
   email?: string;
+  password?: string; // hashed password
   firstName?: string;
   surname?: string;
   role?: string;
@@ -53,7 +56,7 @@ function safeFormat(row: unknown): UserRow | null {
 }
 
 function logStep(step: string, data?: any) {
-  console.log("=== DEBUG STEP ===", step, data ?? "");
+  if (DEBUG) console.log("=== DEBUG STEP ===", step, data ?? "");
 }
 
 function logError(
@@ -74,7 +77,7 @@ function logError(
 }
 
 // ----------------------------
-// CREATE USER
+// CREATE USER WITHOUT Appwrite Auth
 // ----------------------------
 export async function signupUser(payload: {
   email: string;
@@ -93,32 +96,18 @@ export async function signupUser(payload: {
 }) {
   logStep("START signupUser()", payload);
 
-  // 1. Construct payload for Appwrite Auth
-  const createArgs: [string, string, string, string] = [
-    ID.unique(),
-    payload.email,
-    payload.password,
-    `${payload.firstName} ${payload.surname}`,
-  ];
+  // 1. Generate a unique user ID
+  const userId = ID.unique();
 
-  logStep("Prepared createArgs for Appwrite Auth user", createArgs);
-
-  // 2. Create AUTH user
-  let authUser;
-  try {
-    logStep("Calling users.create() with Appwrite SDK...");
-    authUser = await users.create(...createArgs);
-    logStep("Auth user created successfully", authUser);
-  } catch (err) {
-    logError("users.create FAILED", err, { createArgs, payload });
-    logStep("ERROR STOP: Could not create authUser");
-    throw err;
-  }
+  // 2. Hash password
+  const hashedPassword = await bcrypt.hash(payload.password, 10);
+  logStep("Password hashed");
 
   // 3. Build DB row
   const rowPayload = {
-    accountid: authUser.$id,
+    accountid: userId,
     email: payload.email.toLowerCase(),
+    password: hashedPassword,
     firstName: payload.firstName,
     surname: payload.surname,
     country: payload.country ?? null,
@@ -156,30 +145,14 @@ export async function signupUser(payload: {
       DB_ID,
       USERS_TABLE,
     });
-
-    // ROLLBACK auth user
-    try {
-      logStep("Attempting rollback: deleting authUser...", {
-        authUserId: authUser.$id,
-      });
-      await users.delete(authUser.$id);
-      logStep("Rollback successful: authUser deleted");
-    } catch (rollbackErr) {
-      logError("ROLLBACK FAILED: users.delete()", rollbackErr, {
-        failedDeleteUser: authUser.$id,
-      });
-      logStep("Rollback failed. Manual cleanup required.");
-    }
-
     throw err;
   }
 
   logStep("Signup SUCCESS. Returning response...", {
-    authUser,
     profile: safeFormat(row),
   });
 
-  return { authUser, profile: safeFormat(row) };
+  return { profile: safeFormat(row) };
 }
 
 export async function createUser(payload: Parameters<typeof signupUser>[0]) {
@@ -187,7 +160,7 @@ export async function createUser(payload: Parameters<typeof signupUser>[0]) {
 }
 
 // ----------------------------
-// GET / UPDATE / DELETE
+// GET / UPDATE / DELETE USERS
 // ----------------------------
 export async function getUserById(userId: string) {
   try {
@@ -256,18 +229,6 @@ export async function setRole(userId: string, role: string) {
   }
 }
 
-export async function findByEmail(email: string) {
-  try {
-    const res = await tablesDB.listRows(DB_ID, USERS_TABLE, [
-      Query.equal("email", email.toLowerCase()),
-    ]);
-    return res.total > 0 ? safeFormat(res.rows[0]) : null;
-  } catch (err) {
-    logError("findByEmail", err, { email });
-    return null;
-  }
-}
-
 export async function setStatus(userId: string, status: string) {
   try {
     const row = await tablesDB.updateRow(DB_ID, USERS_TABLE, userId, {
@@ -277,6 +238,18 @@ export async function setStatus(userId: string, status: string) {
   } catch (err) {
     logError("setStatus", err, { userId, status });
     throw err;
+  }
+}
+
+export async function findByEmail(email: string) {
+  try {
+    const res = await tablesDB.listRows(DB_ID, USERS_TABLE, [
+      Query.equal("email", email.toLowerCase()),
+    ]);
+    return res.total > 0 ? safeFormat(res.rows[0]) : null;
+  } catch (err) {
+    logError("findByEmail", err, { email });
+    return null;
   }
 }
 

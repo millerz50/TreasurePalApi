@@ -1,4 +1,4 @@
-// server/controllers/userController.ts
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import bcrypt from "bcrypt";
 import { randomUUID } from "crypto";
 import { Request, Response } from "express";
@@ -31,7 +31,7 @@ function logStep(step: string, data?: any) {
   if (DEBUG) console.log(`=== STEP: ${step} ===`, data ?? "");
 }
 
-// Strict phone sanitizer: E.164 format (+ up to 15 digits)
+// Strict phone sanitizer (optional)
 function sanitizePhone(value: unknown): string | null {
   if (!value) return null;
   const s = String(value).trim();
@@ -58,9 +58,6 @@ async function savePhoneToExternalDB(userId: string, phone: string) {
   }
 }
 
-// ----------------------------
-// Signup handler
-// ----------------------------
 // ----------------------------
 // Signup handler
 // ----------------------------
@@ -92,7 +89,7 @@ export async function signup(req: Request, res: Response) {
 
     // Validate required fields
     if (!email || !password || !firstName || !surname) {
-      return res.status(400).json({ error: "Missing required fields all" });
+      return res.status(400).json({ error: "Missing required fields" });
     }
     logStep("Signup request received", { email, firstName, surname, role });
 
@@ -125,7 +122,7 @@ export async function signup(req: Request, res: Response) {
     const agentId = role === "agent" ? randomUUID() : undefined;
     logStep("Generated agent ID if applicable", { agentId });
 
-    // Build payload for Appwrite (exclude phone)
+    // Build payload for DB-only signup
     const servicePayload = {
       email: email.toLowerCase(),
       password: hashedPassword,
@@ -142,20 +139,18 @@ export async function signup(req: Request, res: Response) {
       agentId,
     };
 
-    // Create user in Appwrite
+    // Create user in DB
     let user;
     try {
       user = await createUser(servicePayload);
-      logStep("Created Appwrite user", user);
+      logStep("Created user in DB", user);
     } catch (err) {
       logError("createUser failed", err, { servicePayload });
       return res.status(500).json({ error: "Failed to create user" });
     }
 
-    // Success response
-    return res
-      .status(201)
-      .json({ authUser: user.authUser, profile: user.profile });
+    // Success response (DB-only)
+    return res.status(201).json({ profile: user.profile });
   } catch (err) {
     logError("signup handler failed", err);
     return res.status(500).json({ error: "Internal server error" });
@@ -179,7 +174,7 @@ export async function getUserProfile(req: Request, res: Response) {
     const profile = await getUserByAccountId(accountId);
     if (!profile) return res.status(404).json({ error: "Profile not found" });
 
-    // Load phone from JSON DB
+    // Load phone from local JSON
     let phone: string | undefined;
     try {
       const fileContent = await fs.readFile(dbFile, "utf-8");
