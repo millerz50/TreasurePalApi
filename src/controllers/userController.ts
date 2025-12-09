@@ -2,7 +2,9 @@
 import bcrypt from "bcrypt";
 import { randomUUID } from "crypto";
 import { Request, Response } from "express";
+import fs from "fs/promises";
 import sdk from "node-appwrite";
+import path from "path";
 
 import {
   createUser,
@@ -22,14 +24,15 @@ import { logDebug, logError } from "./utils/logger";
 
 const DEBUG = process.env.DEBUG === "true";
 
+// Path to JSON file
+const dbFile = path.join(__dirname, "phones.json");
+
 /**
  * Strict phone sanitizer: returns either a valid E.164 string (+digits up to 15) or null.
  */
 function sanitizePhone(value: unknown): string | null {
-  if (value === undefined || value === null) return null;
+  if (!value) return null;
   const s = String(value).trim();
-  if (s === "") return null;
-  // Normalize fullwidth plus (U+FF0B) to ASCII plus and strip formatting
   const normalized = s.replace(/^[\uFF0B]/, "+").replace(/[ \-\(\)]/g, "");
   return /^\+\d{1,15}$/.test(normalized) ? normalized : null;
 }
@@ -39,6 +42,28 @@ const client = new sdk.Client()
   .setEndpoint(process.env.APPWRITE_ENDPOINT as string)
   .setProject(process.env.APPWRITE_PROJECT_ID as string)
   .setKey(process.env.APPWRITE_API_KEY as string);
+
+/**
+ * Save a phone number to a JSON file
+ */
+async function savePhoneToExternalDB(userId: string, phone: string) {
+  try {
+    let data: Record<string, string> = {};
+    try {
+      const fileContent = await fs.readFile(dbFile, "utf-8");
+      data = JSON.parse(fileContent);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+    }
+    data[userId] = phone;
+    await fs.writeFile(dbFile, JSON.stringify(data, null, 2), "utf-8");
+    if (DEBUG) console.log(`Saved phone for user ${userId}`);
+  } catch (err) {
+    console.error("Failed to save phone:", err);
+    throw err;
+  }
+}
+
 /* --------------------------
    Signup handler
 --------------------------- */
@@ -52,7 +77,6 @@ export async function signup(req: Request, res: Response) {
       role = "user",
       nationalId,
       bio,
-      metadata = [],
       country,
       location,
       dateOfBirth,
@@ -65,7 +89,6 @@ export async function signup(req: Request, res: Response) {
       role?: string;
       nationalId?: string;
       bio?: string | null;
-      metadata?: unknown;
       country?: string;
       location?: string;
       dateOfBirth?: string;
@@ -78,7 +101,8 @@ export async function signup(req: Request, res: Response) {
 
     if (DEBUG) logDebug("signup request body", { body: req.body });
 
-    const exists = await findByEmail(String(email).toLowerCase());
+    // Check if user already exists
+    const exists = await findByEmail(email.toLowerCase());
     if (exists) return res.status(409).json({ error: "User already exists" });
 
     // Hash password
@@ -88,7 +112,7 @@ export async function signup(req: Request, res: Response) {
     let avatarFileId: string | undefined;
     try {
       const file = (req as any).file as Express.Multer.File | undefined;
-      if (file && typeof uploadToAppwriteBucket === "function") {
+      if (file) {
         const result = await uploadToAppwriteBucket(
           file.buffer,
           file.originalname
@@ -101,52 +125,42 @@ export async function signup(req: Request, res: Response) {
     }
 
     // Generate agent ID if role is agent
-    let agentId: string | undefined;
-    if (role === "agent") agentId = randomUUID();
+    const agentId = role === "agent" ? randomUUID() : undefined;
 
-    // Sanitize phone (E.164 format, e.g. +263771234567) but do NOT send to Appwrite
+    // Sanitize phone locally (do NOT send to Appwrite)
     const phone = sanitizePhone(incomingPhone);
-    if (DEBUG) {
-      logDebug("sanitized E.164 phone (kept local only)", {
-        phone,
-        charCodes: phone ? [...phone].map((c) => c.charCodeAt(0)) : null,
-      });
-    }
+    if (DEBUG) logDebug("sanitized E.164 phone (kept local only)", { phone });
 
-    // Build payload for user creation (exclude phone and metadata here)
+    // Build payload for Appwrite (exclude phone)
     const servicePayload = {
-      email: String(email).toLowerCase(),
+      email: email.toLowerCase(),
       password: hashedPassword,
-      firstName: String(firstName),
-      surname: String(surname),
-      country: country ?? undefined,
-      location: location ?? undefined,
-      role: role ?? "user",
+      firstName,
+      surname,
+      country,
+      location,
+      role,
       status: "Active",
-      nationalId: nationalId ?? undefined,
+      nationalId,
       bio: bio ?? undefined,
-      avatarUrl: avatarFileId ?? undefined,
-      dateOfBirth: dateOfBirth ?? undefined,
-      agentId: agentId ?? undefined,
-      // metadata removed completely
+      avatarUrl: avatarFileId,
+      dateOfBirth,
+      agentId,
     };
 
-    if (DEBUG)
-      logDebug(
-        "servicePayload to createUser (no phone, no metadata sent to Appwrite)",
-        {
-          servicePayload: {
-            ...servicePayload,
-            password: "[REDACTED]",
-          },
-        }
-      );
-
-    // Create user in your service layer (createUser must NOT forward phone/metadata to Appwrite)
+    // Create user in Appwrite
     const user = await createUser(servicePayload);
 
-    // If you want to persist phone, save it in your own DB after user creation
-    // Or call account.updatePhone(phone, password) with Appwrite SDK
+    if (phone && user.profile?.$id) {
+      try {
+        await savePhoneToExternalDB(user.profile.$id, phone);
+      } catch (err) {
+        logError("savePhoneToExternalDB", err, {
+          userId: user.profile.$id,
+          phone,
+        });
+      }
+    }
 
     return res.status(201).json(user);
   } catch (err) {
@@ -174,12 +188,26 @@ export async function getUserProfile(req: Request, res: Response) {
     const profile = await getUserByAccountId(accountId);
     if (!profile) return res.status(404).json({ error: "Profile not found" });
 
+    // Load phone from JSON DB
+
+    let phone: string | undefined;
+
+    try {
+      const fileContent = await fs.readFile(dbFile, "utf-8");
+      const data = JSON.parse(fileContent) as Record<string, string>;
+      if (profile?.$id) {
+        phone = data[profile.$id];
+      }
+    } catch (err) {
+      if (DEBUG) console.error("Failed to read phone JSON:", err);
+    }
+
     res.json({
       userId: profile.$id,
       email: profile.email,
       role: profile.role,
       status: profile.status,
-      phone: profile.phone,
+      phone: phone ?? null,
       bio: profile.bio,
       avatarFileId: profile.avatarFileId ?? null,
       firstName: profile.firstName ?? "",
@@ -280,7 +308,7 @@ export async function getAgents(_req: Request, res: Response) {
     res.json(agents);
   } catch (err) {
     const message =
-      err instanceof Error ? err.message : "Failed to fetch agents all";
+      err instanceof Error ? err.message : "Failed to fetch agents";
     res.status(500).json({ error: message });
   }
 }
