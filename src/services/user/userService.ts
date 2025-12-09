@@ -1,7 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import fs from "fs";
-import path from "path";
-const { Client, ID, Query, TablesDB, Users } = require("node-appwrite");
+import { Client, ID, Query, TablesDB, Users } from "node-appwrite";
 
 const client = new Client()
   .setEndpoint(process.env.APPWRITE_ENDPOINT!)
@@ -31,7 +29,7 @@ export interface UserRow {
   status?: string;
   nationalId?: string | null;
   bio?: string | null;
-  metadata?: string[];
+  metadata?: any[];
   country?: string | null;
   location?: string | null;
   avatarUrl?: string | null;
@@ -65,51 +63,10 @@ function logError(
   );
 }
 
-/**
- * Normalize phone to E.164-ish string or return null.
- */
-function normalizePhone(phone?: unknown): string | null {
-  if (!phone || typeof phone !== "string") return null;
-  const trimmed = phone.trim();
-  const cleaned = trimmed.replace(/[\s\-().]/g, "");
-  if (!cleaned.startsWith("+")) return null;
-  const digits = cleaned.replace(/^\+/, "");
-  if (!/^\d{1,15}$/.test(digits)) return null;
-  return `+${digits}`;
-}
+// ----------------------------
+// CREATE USER
+// ----------------------------
 
-// Path to JSON file
-const PHONE_FILE = path.join(process.cwd(), "phones.json");
-
-/**
- * Save phone number to local JSON file keyed by accountid
- */
-function savePhone(accountid: string, phone: string | null) {
-  try {
-    const existing = fs.existsSync(PHONE_FILE)
-      ? JSON.parse(fs.readFileSync(PHONE_FILE, "utf8"))
-      : {};
-    existing[accountid] = phone;
-    fs.writeFileSync(PHONE_FILE, JSON.stringify(existing, null, 2));
-    if (DEBUG) console.log("Saved phone to JSON:", accountid, phone);
-  } catch (err) {
-    logError("savePhone", err, { accountid, phone });
-  }
-}
-
-/**
- * Lookup phone number by accountid from JSON file
- */
-export function getPhoneByAccountId(accountid: string): string | null {
-  try {
-    if (!fs.existsSync(PHONE_FILE)) return null;
-    const data = JSON.parse(fs.readFileSync(PHONE_FILE, "utf8"));
-    return data[accountid] ?? null;
-  } catch (err) {
-    logError("getPhoneByAccountId", err, { accountid });
-    return null;
-  }
-}
 export async function signupUser(payload: {
   email: string;
   password: string;
@@ -121,27 +78,12 @@ export async function signupUser(payload: {
   status?: string;
   nationalId?: string;
   bio?: string;
-  metadata?: any[]; // allow objects for key/value metadata
+  metadata?: any[];
   avatarUrl?: string;
   dateOfBirth?: string;
-  phone?: string; // frontend may provide E.164 but we will NOT send to Appwrite
 }) {
-  // Optional: simple E.164 validation
-  const isValidE164 = (p?: string) => /^\+\d{1,15}$/.test(p ?? "");
-
-  if (DEBUG) console.log("DEBUG incoming phone:", payload.phone);
-
-  // Normalize phone: keep only if valid E.164, otherwise null
-  const phone =
-    payload.phone && isValidE164(payload.phone) ? payload.phone : null;
-  if (payload.phone && !phone && DEBUG) {
-    console.warn(
-      "DEBUG phone provided but invalid E.164, storing as null locally"
-    );
-  }
-
-  // Build args for Appwrite auth user creation (do NOT include phone)
-  const createArgs = [
+  // Build args for Appwrite auth user creation
+  const createArgs: [string, string, string, string] = [
     ID.unique(),
     payload.email,
     payload.password,
@@ -150,19 +92,13 @@ export async function signupUser(payload: {
 
   let authUser;
   try {
-    // Create auth user in Appwrite without phone field
     authUser = await users.create(...createArgs);
     if (DEBUG) console.log("DEBUG authUser created:", authUser);
-
-    // IMPORTANT: Do NOT call any Appwrite account phone APIs here.
-    // We intentionally avoid savePhone(authUser.$id, ...) or account.updatePhone(...)
-    // to prevent Appwrite from validating/rejecting the phone.
   } catch (err) {
     logError("users.create", err, { payload, createArgs });
     throw err;
   }
 
-  // Build profile row payload and store phone locally (in metadata or dedicated column)
   const rowPayload = {
     accountid: authUser.$id,
     email: payload.email.toLowerCase(),
@@ -174,19 +110,12 @@ export async function signupUser(payload: {
     status: payload.status ?? "Active",
     nationalId: payload.nationalId ?? null,
     bio: payload.bio ?? null,
-    // Ensure metadata is an array of objects; append phone info locally if present
     metadata: Array.isArray(payload.metadata) ? [...payload.metadata] : [],
     avatarUrl: payload.avatarUrl ?? null,
     dateOfBirth: payload.dateOfBirth ?? null,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-    // Optional dedicated phone column (preferred) — keep it local only
-    phone: phone, // null if invalid or not provided
-    phoneVerified: false,
   };
-
-  // If you prefer to keep phone inside metadata instead of a dedicated column:
-  // if (phone) rowPayload.metadata.push({ key: "phone", value: phone, verified: false });
 
   let row;
   try {
@@ -194,17 +123,14 @@ export async function signupUser(payload: {
     if (DEBUG) console.log("DEBUG profile row created:", row);
   } catch (err) {
     logError("tablesDB.createRow", err, { payload });
-
-    // ❌ Rollback: delete auth user to prevent dangling user
     try {
-      await users.delete(authUser.$id);
+      await users.delete(authUser.$id); // rollback
       if (DEBUG) console.log("DEBUG rolled back authUser after DB failure");
     } catch (rollbackErr) {
       logError("rollback users.delete failed", rollbackErr, {
         authUserId: authUser.$id,
       });
     }
-
     throw err;
   }
 
@@ -216,119 +142,101 @@ export async function createUser(payload: Parameters<typeof signupUser>[0]) {
   return signupUser(payload);
 }
 
-// 🔎 Get by table row ID
-export async function getUserById(userId: string): Promise<UserRow | null> {
+// ----------------------------
+// GET / UPDATE / DELETE / QUERY
+// ----------------------------
+
+export async function getUserById(userId: string) {
   try {
     const row = await tablesDB.getRow(DB_ID, USERS_TABLE, userId);
     return safeFormat(row);
-  } catch (err: unknown) {
+  } catch (err) {
     logError("getUserById", err, { userId });
     return null;
   }
 }
 
-// 🔎 Get by linked auth user ID
-export async function getUserByAccountId(
-  accountid: string
-): Promise<UserRow | null> {
+export async function getUserByAccountId(accountid: string) {
   try {
     const res = await tablesDB.listRows(DB_ID, USERS_TABLE, [
       Query.equal("accountid", accountid),
     ]);
     return res.total > 0 ? safeFormat(res.rows[0]) : null;
-  } catch (err: unknown) {
+  } catch (err) {
     logError("getUserByAccountId", err, { accountid });
     return null;
   }
 }
 
-// 📋 List all users
 export async function listUsers(limit = 100, offset = 0) {
   try {
     const res = await tablesDB.listRows(DB_ID, USERS_TABLE, [], String(limit));
     const rows = Array.isArray(res.rows) ? res.rows : [];
     const usersList = rows.slice(offset, offset + limit).map(safeFormat);
     return { total: res.total ?? usersList.length, users: usersList };
-  } catch (err: unknown) {
+  } catch (err) {
     logError("listUsers", err, { limit, offset });
     return { total: 0, users: [] };
   }
 }
 
-// ✏️ Update profile row
 export async function updateUser(
   userId: string,
   updates: Record<string, unknown>
 ) {
   try {
     if ("password" in updates) delete (updates as any).password;
-
-    if ("phone" in updates) {
-      const normalized = normalizePhone(updates.phone as string);
-      if (normalized) {
-        // Save to JSON file instead of Appwrite
-        const user = await getUserById(userId);
-        if (user?.accountid) savePhone(user.accountid, normalized);
-      }
-      delete updates.phone; // never store in Appwrite
-    }
-
     const row = await tablesDB.updateRow(DB_ID, USERS_TABLE, userId, updates);
     return safeFormat(row);
-  } catch (err: unknown) {
+  } catch (err) {
     logError("updateUser", err, { userId, updates });
     throw err;
   }
 }
 
-// ❌ Delete profile row
 export async function deleteUser(userId: string) {
   try {
     return await tablesDB.deleteRow(DB_ID, USERS_TABLE, userId);
-  } catch (err: unknown) {
+  } catch (err) {
     logError("deleteUser", err, { userId });
     throw err;
   }
 }
 
-// 🔧 Set role
 export async function setRole(userId: string, role: string) {
   try {
     const row = await tablesDB.updateRow(DB_ID, USERS_TABLE, userId, { role });
     return safeFormat(row);
-  } catch (err: unknown) {
+  } catch (err) {
     logError("setRole", err, { userId, role });
     throw err;
   }
 }
 
-// 🔎 Find by email
 export async function findByEmail(email: string) {
   try {
     const res = await tablesDB.listRows(DB_ID, USERS_TABLE, [
       Query.equal("email", email.toLowerCase()),
     ]);
     return res.total > 0 ? safeFormat(res.rows[0]) : null;
-  } catch (err: unknown) {
+  } catch (err) {
     logError("findByEmail", err, { email });
     return null;
   }
 }
 
-// 🔧 Set status
 export async function setStatus(userId: string, status: string) {
   try {
     const row = await tablesDB.updateRow(DB_ID, USERS_TABLE, userId, {
       status,
     });
     return safeFormat(row);
-  } catch (err: unknown) {
+  } catch (err) {
     logError("setStatus", err, { userId, status });
     throw err;
   }
 }
 
-// 🔎 List agents
 export async function listAgents(limit = 100, offset = 0) {
   try {
     const res = await tablesDB.listRows(
@@ -340,7 +248,7 @@ export async function listAgents(limit = 100, offset = 0) {
     const rows = Array.isArray(res.rows) ? res.rows : [];
     const agentsList = rows.slice(offset, offset + limit).map(safeFormat);
     return { total: res.total ?? agentsList.length, agents: agentsList };
-  } catch (err: unknown) {
+  } catch (err) {
     logError("listAgents", err, { limit, offset });
     return { total: 0, agents: [] };
   }
