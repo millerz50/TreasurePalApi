@@ -123,7 +123,16 @@ export async function signupUser(payload: {
 
     // Save phone if provided
     if (payload.phone) {
-      await accounts.updatePhone(authUser.$id, payload.phone);
+      const normalizedPhone = normalizePhone(payload.phone); // utility for E.164 format
+      try {
+        await accounts.updatePhone(normalizedPhone, payload.password);
+        logStep("Phone updated in Appwrite", normalizedPhone);
+      } catch (err) {
+        logError("accounts.updatePhone FAILED", err, {
+          phone: normalizedPhone,
+          email: payload.email,
+        });
+      }
     }
   } catch (err) {
     logError("accounts.create FAILED", err, { email: payload.email });
@@ -145,7 +154,7 @@ export async function signupUser(payload: {
     bio: payload.bio ?? null,
     metadata: Array.isArray(payload.metadata) ? [...payload.metadata] : [],
     dateOfBirth: payload.dateOfBirth ?? null,
-    phone: payload.phone ?? null,
+    phone: payload.phone ? normalizePhone(payload.phone) : null, // ✅ normalized phone saved
     agentId: ID.unique(), // generate a unique agentId
   };
 
@@ -181,6 +190,17 @@ export async function signupUser(payload: {
 // Helper wrapper
 export async function createUser(payload: Parameters<typeof signupUser>[0]) {
   return signupUser(payload);
+}
+
+// Example phone normalizer
+function normalizePhone(phone: string): string {
+  // Strip spaces/dashes, ensure E.164 format
+  let cleaned = phone.replace(/[\s-]/g, "");
+  if (!cleaned.startsWith("+")) {
+    // Default to Zimbabwe country code if missing
+    cleaned = "+263" + cleaned.replace(/^0/, "");
+  }
+  return cleaned;
 }
 
 // ----------------------------
