@@ -79,6 +79,10 @@ function logError(
     })
   );
 }
+
+// ----------------------------
+// CREATE USER WITH APPWRITE AUTH
+// ----------------------------
 // ----------------------------
 // CREATE USER WITH APPWRITE AUTH
 // ----------------------------
@@ -118,13 +122,12 @@ export async function signupUser(payload: {
 
     // Save phone if provided
     if (payload.phone) {
-      const normalizedPhone = normalizePhone(payload.phone);
       try {
-        await accounts.updatePhone(normalizedPhone, payload.password);
-        logStep("Phone updated in Appwrite", normalizedPhone);
+        await accounts.updatePhone(payload.phone, payload.password);
+        logStep("Phone updated in Appwrite", payload.phone);
       } catch (err) {
         logError("accounts.updatePhone FAILED", err, {
-          phone: normalizedPhone,
+          phone: payload.phone,
           email: payload.email,
         });
       }
@@ -148,7 +151,7 @@ export async function signupUser(payload: {
     bio: payload.bio ?? null,
     metadata: Array.isArray(payload.metadata) ? [...payload.metadata] : [],
     dateOfBirth: payload.dateOfBirth ?? null,
-    phone: payload.phone ? normalizePhone(payload.phone) : null,
+    phone: payload.phone ?? null,
     agentId: ID.unique(),
   };
 
@@ -168,14 +171,14 @@ export async function signupUser(payload: {
     logError("tablesDB.createRow FAILED", err, { rowPayload });
     // rollback auth user
     try {
-      await accounts.deleteSession(authUser.$id);
+      await accounts.deleteSession(authUser.$id); // delete user if DB fails
     } catch {}
     throw err;
   }
 
-  // Delete session after signup
+  // Delete session after signup (optional)
   try {
-    await accounts.deleteSession(authUser.$id);
+    await accounts.deleteSession("current");
   } catch {}
 
   return { authUser, profile: safeFormat(row) };
@@ -184,17 +187,6 @@ export async function signupUser(payload: {
 // Helper wrapper
 export async function createUser(payload: Parameters<typeof signupUser>[0]) {
   return signupUser(payload);
-}
-
-// Example phone normalizer
-function normalizePhone(phone: string): string {
-  // Strip spaces/dashes, ensure E.164 format
-  let cleaned = phone.replace(/[\s-]/g, "");
-  if (!cleaned.startsWith("+")) {
-    // Default to Zimbabwe country code if missing
-    cleaned = "+263" + cleaned.replace(/^0/, "");
-  }
-  return cleaned;
 }
 
 // ----------------------------
