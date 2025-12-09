@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import bcrypt from "bcrypt";
 import sdk, {
   Client,
   ID,
@@ -80,7 +79,6 @@ function logError(
     })
   );
 }
-
 // ----------------------------
 // CREATE USER WITH APPWRITE AUTH
 // ----------------------------
@@ -107,23 +105,20 @@ export async function signupUser(payload: {
     throw new Error("User already exists with this email.");
   }
 
-  // 1. Hash password
-  const hashedPassword = await bcrypt.hash(payload.password, 10);
-
-  // 2. Create Appwrite Auth user
+  // 1. Create Appwrite Auth user (raw password only)
   let authUser;
   try {
     authUser = await accounts.create(
       ID.unique(),
       payload.email,
-      payload.password,
+      payload.password, // raw password, Appwrite hashes internally
       `${payload.firstName} ${payload.surname}`
     );
     logStep("Auth user created", authUser);
 
     // Save phone if provided
     if (payload.phone) {
-      const normalizedPhone = normalizePhone(payload.phone); // utility for E.164 format
+      const normalizedPhone = normalizePhone(payload.phone);
       try {
         await accounts.updatePhone(normalizedPhone, payload.password);
         logStep("Phone updated in Appwrite", normalizedPhone);
@@ -139,11 +134,10 @@ export async function signupUser(payload: {
     throw err;
   }
 
-  // 3. Build DB row payload (remove avatarUrl, add agentId)
+  // 2. Build DB row payload (no password hash stored)
   const rowPayload: UserRow = {
     accountid: authUser.$id,
     email: payload.email.toLowerCase(),
-    password: hashedPassword,
     firstName: payload.firstName,
     surname: payload.surname,
     country: payload.country ?? null,
@@ -154,13 +148,13 @@ export async function signupUser(payload: {
     bio: payload.bio ?? null,
     metadata: Array.isArray(payload.metadata) ? [...payload.metadata] : [],
     dateOfBirth: payload.dateOfBirth ?? null,
-    phone: payload.phone ? normalizePhone(payload.phone) : null, // ✅ normalized phone saved
-    agentId: ID.unique(), // generate a unique agentId
+    phone: payload.phone ? normalizePhone(payload.phone) : null,
+    agentId: ID.unique(),
   };
 
   logStep("Prepared DB rowPayload", rowPayload);
 
-  // 4. Save profile in DB with permissions
+  // 3. Save profile in DB with permissions
   let row;
   const rowId = ID.unique();
   try {
