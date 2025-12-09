@@ -132,42 +132,18 @@ export async function signup(req: Request, res: Response) {
       agentId: agentId ?? undefined,
     };
 
+    // If phone provided, store it in metadata instead of sending to Appwrite
+    if (phone) {
+      servicePayload.metadata = [
+        ...servicePayload.metadata,
+        { key: "phone", value: phone },
+      ];
+    }
+
     if (DEBUG) logDebug("servicePayload to createUser", { servicePayload });
 
     // Create user in your service layer
     const user = await createUser(servicePayload);
-
-    // If phone provided, update it separately via Appwrite Account API
-    if (phone) {
-      try {
-        const account = new sdk.Account(client);
-        await account.updatePhone(phone, password);
-      } catch (err) {
-        logError("updatePhone", err, { email, phone });
-        // Fallback: store phone in metadata if Appwrite rejects it
-        try {
-          const targetId = user.authUser?.$id ?? user.profile?.id;
-          if (targetId) {
-            await svcUpdateUser(targetId, {
-              metadata: [
-                ...servicePayload.metadata,
-                { key: "unverifiedPhone", value: phone },
-              ],
-            });
-          } else {
-            logError("fallbackPhoneMetadata", new Error("No valid user ID"), {
-              email,
-              phone,
-            });
-          }
-        } catch (metaErr) {
-          logError("fallbackPhoneMetadata", metaErr, {
-            userId: user.authUser?.$id ?? user.profile?.id,
-            phone,
-          });
-        }
-      }
-    }
 
     return res.status(201).json(user);
   } catch (err) {
