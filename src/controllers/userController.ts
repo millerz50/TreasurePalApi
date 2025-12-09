@@ -39,7 +39,6 @@ const client = new sdk.Client()
   .setEndpoint(process.env.APPWRITE_ENDPOINT as string)
   .setProject(process.env.APPWRITE_PROJECT_ID as string)
   .setKey(process.env.APPWRITE_API_KEY as string);
-
 /* --------------------------
    Signup handler
 --------------------------- */
@@ -105,17 +104,32 @@ export async function signup(req: Request, res: Response) {
     let agentId: string | undefined;
     if (role === "agent") agentId = randomUUID();
 
-    // Sanitize phone (E.164 format, e.g. +263771234567)
+    // Sanitize phone (E.164 format, e.g. +263771234567) but do NOT send to Appwrite
     const phone = sanitizePhone(incomingPhone);
     if (DEBUG) {
-      logDebug("sanitized E.164 phone", {
+      logDebug("sanitized E.164 phone (kept local only)", {
         phone,
         charCodes: phone ? [...phone].map((c) => c.charCodeAt(0)) : null,
       });
     }
 
     // Build payload for user creation (exclude phone here)
-    const servicePayload = {
+    const servicePayload: {
+      email: string;
+      password: string;
+      firstName: string;
+      surname: string;
+      country?: string;
+      location?: string;
+      role?: string;
+      status?: string;
+      nationalId?: string;
+      bio?: string;
+      metadata: any[];
+      avatarUrl?: string;
+      dateOfBirth?: string;
+      agentId?: string;
+    } = {
       email: String(email).toLowerCase(),
       password: hashedPassword,
       firstName: String(firstName),
@@ -126,7 +140,7 @@ export async function signup(req: Request, res: Response) {
       status: "Active",
       nationalId: nationalId ?? undefined,
       bio: bio ?? undefined,
-      metadata: Array.isArray(metadata) ? metadata : [],
+      metadata: Array.isArray(metadata) ? [...metadata] : [],
       avatarUrl: avatarFileId ?? undefined,
       dateOfBirth: dateOfBirth ?? undefined,
       agentId: agentId ?? undefined,
@@ -136,13 +150,20 @@ export async function signup(req: Request, res: Response) {
     if (phone) {
       servicePayload.metadata = [
         ...servicePayload.metadata,
-        { key: "phone", value: phone },
+        { key: "phone", value: phone, verified: false },
       ];
     }
 
-    if (DEBUG) logDebug("servicePayload to createUser", { servicePayload });
+    if (DEBUG)
+      logDebug("servicePayload to createUser (no phone sent to Appwrite)", {
+        servicePayload: {
+          ...servicePayload,
+          // avoid logging sensitive fields like password
+          password: "[REDACTED]",
+        },
+      });
 
-    // Create user in your service layer
+    // Create user in your service layer (createUser must NOT forward phone to Appwrite)
     const user = await createUser(servicePayload);
 
     return res.status(201).json(user);

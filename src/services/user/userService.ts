@@ -121,22 +121,26 @@ export async function signupUser(payload: {
   status?: string;
   nationalId?: string;
   bio?: string;
-  metadata?: string[];
+  metadata?: any[]; // allow objects for key/value metadata
   avatarUrl?: string;
   dateOfBirth?: string;
-  phone?: string; // EXPECTS already E.164 from frontend hook
+  phone?: string; // frontend may provide E.164 but we will NOT send to Appwrite
 }) {
   // Optional: simple E.164 validation
   const isValidE164 = (p?: string) => /^\+\d{1,15}$/.test(p ?? "");
 
   if (DEBUG) console.log("DEBUG incoming phone:", payload.phone);
 
-  // Throw if phone is provided but invalid
-  if (payload.phone && !isValidE164(payload.phone)) {
-    throw new Error("Invalid phone format. Must be E.164 (+1234567890).");
+  // Normalize phone: keep only if valid E.164, otherwise null
+  const phone =
+    payload.phone && isValidE164(payload.phone) ? payload.phone : null;
+  if (payload.phone && !phone && DEBUG) {
+    console.warn(
+      "DEBUG phone provided but invalid E.164, storing as null locally"
+    );
   }
 
-  // Build args for Appwrite auth user creation
+  // Build args for Appwrite auth user creation (do NOT include phone)
   const createArgs = [
     ID.unique(),
     payload.email,
@@ -146,17 +150,19 @@ export async function signupUser(payload: {
 
   let authUser;
   try {
+    // Create auth user in Appwrite without phone field
     authUser = await users.create(...createArgs);
     if (DEBUG) console.log("DEBUG authUser created:", authUser);
 
-    // Store phone exactly as frontend formatted it (already validated E.164)
-    await savePhone(authUser.$id, payload.phone ?? null);
+    // IMPORTANT: Do NOT call any Appwrite account phone APIs here.
+    // We intentionally avoid savePhone(authUser.$id, ...) or account.updatePhone(...)
+    // to prevent Appwrite from validating/rejecting the phone.
   } catch (err) {
     logError("users.create", err, { payload, createArgs });
     throw err;
   }
 
-  // Build profile row payload
+  // Build profile row payload and store phone locally (in metadata or dedicated column)
   const rowPayload = {
     accountid: authUser.$id,
     email: payload.email.toLowerCase(),
@@ -168,12 +174,19 @@ export async function signupUser(payload: {
     status: payload.status ?? "Active",
     nationalId: payload.nationalId ?? null,
     bio: payload.bio ?? null,
-    metadata: payload.metadata ?? [],
+    // Ensure metadata is an array of objects; append phone info locally if present
+    metadata: Array.isArray(payload.metadata) ? [...payload.metadata] : [],
     avatarUrl: payload.avatarUrl ?? null,
     dateOfBirth: payload.dateOfBirth ?? null,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+    // Optional dedicated phone column (preferred) — keep it local only
+    phone: phone, // null if invalid or not provided
+    phoneVerified: false,
   };
+
+  // If you prefer to keep phone inside metadata instead of a dedicated column:
+  // if (phone) rowPayload.metadata.push({ key: "phone", value: phone, verified: false });
 
   let row;
   try {
