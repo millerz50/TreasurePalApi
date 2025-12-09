@@ -61,6 +61,9 @@ async function savePhoneToExternalDB(userId: string, phone: string) {
 // ----------------------------
 // Signup handler
 // ----------------------------
+// ----------------------------
+// Signup handler
+// ----------------------------
 export async function signup(req: Request, res: Response) {
   try {
     const {
@@ -74,7 +77,6 @@ export async function signup(req: Request, res: Response) {
       country,
       location,
       dateOfBirth,
-      phone: incomingPhone,
     } = req.body as {
       email?: string;
       password?: string;
@@ -86,7 +88,6 @@ export async function signup(req: Request, res: Response) {
       country?: string;
       location?: string;
       dateOfBirth?: string;
-      phone?: string;
     };
 
     // Validate required fields
@@ -124,10 +125,6 @@ export async function signup(req: Request, res: Response) {
     const agentId = role === "agent" ? randomUUID() : undefined;
     logStep("Generated agent ID if applicable", { agentId });
 
-    // Sanitize phone locally (do NOT send to Appwrite)
-    const phone = sanitizePhone(incomingPhone);
-    logStep("Sanitized phone", { phone });
-
     // Build payload for Appwrite (exclude phone)
     const servicePayload = {
       email: email.toLowerCase(),
@@ -153,18 +150,6 @@ export async function signup(req: Request, res: Response) {
     } catch (err) {
       logError("createUser failed", err, { servicePayload });
       return res.status(500).json({ error: "Failed to create user" });
-    }
-
-    // Save phone in external JSON
-    if (phone && user.profile?.$id) {
-      try {
-        await savePhoneToExternalDB(user.profile.$id, phone);
-      } catch (err) {
-        logError("Failed to save phone", err, {
-          userId: user.profile.$id,
-          phone,
-        });
-      }
     }
 
     // Success response
