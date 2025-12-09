@@ -113,23 +113,8 @@ export async function signup(req: Request, res: Response) {
       });
     }
 
-    // Build payload for user creation (exclude phone here)
-    const servicePayload: {
-      email: string;
-      password: string;
-      firstName: string;
-      surname: string;
-      country?: string;
-      location?: string;
-      role?: string;
-      status?: string;
-      nationalId?: string;
-      bio?: string;
-      metadata: any[];
-      avatarUrl?: string;
-      dateOfBirth?: string;
-      agentId?: string;
-    } = {
+    // Build payload for user creation (exclude phone and metadata here)
+    const servicePayload = {
       email: String(email).toLowerCase(),
       password: hashedPassword,
       firstName: String(firstName),
@@ -140,31 +125,28 @@ export async function signup(req: Request, res: Response) {
       status: "Active",
       nationalId: nationalId ?? undefined,
       bio: bio ?? undefined,
-      metadata: Array.isArray(metadata) ? [...metadata] : [],
       avatarUrl: avatarFileId ?? undefined,
       dateOfBirth: dateOfBirth ?? undefined,
       agentId: agentId ?? undefined,
+      // metadata removed completely
     };
 
-    // If phone provided, store it in metadata instead of sending to Appwrite
-    if (phone) {
-      servicePayload.metadata = [
-        ...servicePayload.metadata,
-        { key: "phone", value: phone, verified: false },
-      ];
-    }
-
     if (DEBUG)
-      logDebug("servicePayload to createUser (no phone sent to Appwrite)", {
-        servicePayload: {
-          ...servicePayload,
-          // avoid logging sensitive fields like password
-          password: "[REDACTED]",
-        },
-      });
+      logDebug(
+        "servicePayload to createUser (no phone, no metadata sent to Appwrite)",
+        {
+          servicePayload: {
+            ...servicePayload,
+            password: "[REDACTED]",
+          },
+        }
+      );
 
-    // Create user in your service layer (createUser must NOT forward phone to Appwrite)
+    // Create user in your service layer (createUser must NOT forward phone/metadata to Appwrite)
     const user = await createUser(servicePayload);
+
+    // If you want to persist phone, save it in your own DB after user creation
+    // Or call account.updatePhone(phone, password) with Appwrite SDK
 
     return res.status(201).json(user);
   } catch (err) {
