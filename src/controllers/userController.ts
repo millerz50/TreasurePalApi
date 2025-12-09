@@ -2,6 +2,7 @@
 import bcrypt from "bcrypt";
 import { randomUUID } from "crypto";
 import { Request, Response } from "express";
+import sdk from "node-appwrite";
 
 import {
   createUser,
@@ -30,6 +31,12 @@ function sanitizePhone(value: unknown): string | null {
   if (s === "") return null;
   return /^\+\d{1,15}$/.test(s) ? s : null;
 }
+
+// Initialize Appwrite client (server-side)
+const client = new sdk.Client()
+  .setEndpoint(process.env.APPWRITE_ENDPOINT as string)
+  .setProject(process.env.APPWRITE_PROJECT_ID as string)
+  .setKey(process.env.APPWRITE_API_KEY as string);
 
 /* --------------------------
    Signup handler
@@ -96,11 +103,11 @@ export async function signup(req: Request, res: Response) {
     let agentId: string | undefined;
     if (role === "agent") agentId = randomUUID();
 
-    // Sanitize phone
+    // Sanitize phone (E.164 format, e.g. +263771234567)
     const phone = sanitizePhone(incomingPhone) ?? undefined;
     if (DEBUG) logDebug("sanitized E.164 phone", { phone });
 
-    // Build payload
+    // Build payload for user creation (exclude phone here)
     const servicePayload = {
       email: String(email).toLowerCase(),
       password: hashedPassword,
@@ -115,13 +122,24 @@ export async function signup(req: Request, res: Response) {
       metadata: Array.isArray(metadata) ? metadata : [],
       avatarUrl: avatarFileId ?? undefined,
       dateOfBirth: dateOfBirth ?? undefined,
-      phone,
       agentId: agentId ?? undefined,
     };
 
     if (DEBUG) logDebug("servicePayload to createUser", { servicePayload });
 
+    // Create user in your service layer
     const user = await createUser(servicePayload);
+
+    // If phone provided, update it separately via Appwrite Account API
+    if (phone) {
+      try {
+        const account = new sdk.Account(client);
+        await account.updatePhone(phone, password);
+      } catch (err) {
+        logError("updatePhone", err, { email, phone });
+      }
+    }
+
     return res.status(201).json(user);
   } catch (err) {
     logError("signup", err, { body: req.body });
@@ -254,7 +272,7 @@ export async function getAgents(_req: Request, res: Response) {
     res.json(agents);
   } catch (err) {
     const message =
-      err instanceof Error ? err.message : "Failed to fetch agents";
+      err instanceof Error ? err.message : "Failed to fetch agents all";
     res.status(500).json({ error: message });
   }
 }
