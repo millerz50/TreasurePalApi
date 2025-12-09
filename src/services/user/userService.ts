@@ -1,6 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Client, ID, Query, TablesDB, Users } from "node-appwrite";
 
+// ----------------------------
+// INIT APPWRITE CLIENT
+// ----------------------------
 const client = new Client()
   .setEndpoint(process.env.APPWRITE_ENDPOINT!)
   .setProject(process.env.APPWRITE_PROJECT_ID!)
@@ -19,6 +22,9 @@ if (!DB_ID || !USERS_TABLE) {
   );
 }
 
+// ----------------------------
+// HELPERS
+// ----------------------------
 export interface UserRow {
   $id?: string;
   accountid?: string;
@@ -46,6 +52,10 @@ function safeFormat(row: unknown): UserRow | null {
   return formatted;
 }
 
+function logStep(step: string, data?: any) {
+  console.log("=== DEBUG STEP ===", step, data ?? "");
+}
+
 function logError(
   operation: string,
   err: unknown,
@@ -66,7 +76,6 @@ function logError(
 // ----------------------------
 // CREATE USER
 // ----------------------------
-
 export async function signupUser(payload: {
   email: string;
   password: string;
@@ -82,7 +91,9 @@ export async function signupUser(payload: {
   avatarUrl?: string;
   dateOfBirth?: string;
 }) {
-  // Build args for Appwrite auth user creation
+  logStep("START signupUser()", payload);
+
+  // 1. Construct payload for Appwrite Auth
   const createArgs: [string, string, string, string] = [
     ID.unique(),
     payload.email,
@@ -90,15 +101,21 @@ export async function signupUser(payload: {
     `${payload.firstName} ${payload.surname}`,
   ];
 
+  logStep("Prepared createArgs for Appwrite Auth user", createArgs);
+
+  // 2. Create AUTH user
   let authUser;
   try {
+    logStep("Calling users.create() with Appwrite SDK...");
     authUser = await users.create(...createArgs);
-    if (DEBUG) console.log("DEBUG authUser created:", authUser);
+    logStep("Auth user created successfully", authUser);
   } catch (err) {
-    logError("users.create", err, { payload, createArgs });
+    logError("users.create FAILED", err, { createArgs, payload });
+    logStep("ERROR STOP: Could not create authUser");
     throw err;
   }
 
+  // 3. Build DB row
   const rowPayload = {
     accountid: authUser.$id,
     email: payload.email.toLowerCase(),
@@ -117,35 +134,61 @@ export async function signupUser(payload: {
     updatedAt: new Date().toISOString(),
   };
 
+  logStep("Prepared DB rowPayload", rowPayload);
+
+  // 4. Write profile into DB
   let row;
+  const rowId = ID.unique();
+
   try {
-    row = await tablesDB.createRow(DB_ID, USERS_TABLE, ID.unique(), rowPayload);
-    if (DEBUG) console.log("DEBUG profile row created:", row);
+    logStep("Calling tablesDB.createRow()...", {
+      DB_ID,
+      USERS_TABLE,
+      rowId,
+      rowPayload,
+    });
+
+    row = await tablesDB.createRow(DB_ID, USERS_TABLE, rowId, rowPayload);
+    logStep("Profile row created successfully", row);
   } catch (err) {
-    logError("tablesDB.createRow", err, { payload });
+    logError("tablesDB.createRow FAILED", err, {
+      rowPayload,
+      DB_ID,
+      USERS_TABLE,
+    });
+
+    // ROLLBACK auth user
     try {
-      await users.delete(authUser.$id); // rollback
-      if (DEBUG) console.log("DEBUG rolled back authUser after DB failure");
-    } catch (rollbackErr) {
-      logError("rollback users.delete failed", rollbackErr, {
+      logStep("Attempting rollback: deleting authUser...", {
         authUserId: authUser.$id,
       });
+      await users.delete(authUser.$id);
+      logStep("Rollback successful: authUser deleted");
+    } catch (rollbackErr) {
+      logError("ROLLBACK FAILED: users.delete()", rollbackErr, {
+        failedDeleteUser: authUser.$id,
+      });
+      logStep("Rollback failed. Manual cleanup required.");
     }
+
     throw err;
   }
+
+  logStep("Signup SUCCESS. Returning response...", {
+    authUser,
+    profile: safeFormat(row),
+  });
 
   return { authUser, profile: safeFormat(row) };
 }
 
-// Alias
 export async function createUser(payload: Parameters<typeof signupUser>[0]) {
   return signupUser(payload);
 }
 
 // ----------------------------
-// GET / UPDATE / DELETE / QUERY
+// GET / UPDATE / DELETE
 // ----------------------------
-
 export async function getUserById(userId: string) {
   try {
     const row = await tablesDB.getRow(DB_ID, USERS_TABLE, userId);
@@ -237,6 +280,9 @@ export async function setStatus(userId: string, status: string) {
   }
 }
 
+// ----------------------------
+// AGENT LIST
+// ----------------------------
 export async function listAgents(limit = 100, offset = 0) {
   try {
     const res = await tablesDB.listRows(
@@ -245,8 +291,10 @@ export async function listAgents(limit = 100, offset = 0) {
       [Query.equal("role", "agent")],
       String(limit)
     );
+
     const rows = Array.isArray(res.rows) ? res.rows : [];
     const agentsList = rows.slice(offset, offset + limit).map(safeFormat);
+
     return { total: res.total ?? agentsList.length, agents: agentsList };
   } catch (err) {
     logError("listAgents", err, { limit, offset });
