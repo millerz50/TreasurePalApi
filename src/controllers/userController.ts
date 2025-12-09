@@ -31,14 +31,9 @@ function sanitizePhone(value: unknown): string | null {
   return /^\+\d{1,15}$/.test(s) ? s : null;
 }
 
-/**
- * Signup controller
- * - Validates required fields
- * - Hashes password
- * - Sanitizes phone
- * - Handles optional avatar upload
- * - Delegates to createUser service with a clean payload
- */
+/* --------------------------
+   Signup handler
+--------------------------- */
 export async function signup(req: Request, res: Response) {
   try {
     const {
@@ -69,11 +64,11 @@ export async function signup(req: Request, res: Response) {
       phone?: string;
     };
 
-    if (DEBUG) logDebug("signup request body", { body: req.body });
-
     if (!email || !password || !firstName || !surname) {
       return res.status(400).json({ error: "Missing required fields" });
     }
+
+    if (DEBUG) logDebug("signup request body", { body: req.body });
 
     const exists = await findByEmail(String(email).toLowerCase());
     if (exists) return res.status(409).json({ error: "User already exists" });
@@ -97,15 +92,15 @@ export async function signup(req: Request, res: Response) {
       logError("avatarUpload", err, { email });
     }
 
-    // Generate agent id
+    // Generate agent ID if role is agent
     let agentId: string | undefined;
     if (role === "agent") agentId = randomUUID();
 
-    // ✔ Use phone directly — already E.164 formatted by frontend hook
-    const phone = incomingPhone || undefined;
-    if (DEBUG) logDebug("incoming E.164 phone (controller)", { phone });
+    // Sanitize phone
+    const phone = sanitizePhone(incomingPhone) ?? undefined;
+    if (DEBUG) logDebug("sanitized E.164 phone", { phone });
 
-    // Build payload for service
+    // Build payload
     const servicePayload = {
       email: String(email).toLowerCase(),
       password: hashedPassword,
@@ -120,14 +115,13 @@ export async function signup(req: Request, res: Response) {
       metadata: Array.isArray(metadata) ? metadata : [],
       avatarUrl: avatarFileId ?? undefined,
       dateOfBirth: dateOfBirth ?? undefined,
-      phone, // ✔ just pass directly
+      phone,
       agentId: agentId ?? undefined,
     };
 
     if (DEBUG) logDebug("servicePayload to createUser", { servicePayload });
 
     const user = await createUser(servicePayload);
-
     return res.status(201).json(user);
   } catch (err) {
     logError("signup", err, { body: req.body });
@@ -136,9 +130,9 @@ export async function signup(req: Request, res: Response) {
   }
 }
 
-/* -------------------------
-   Other exported handlers
-   ------------------------- */
+/* --------------------------
+   Other handlers
+--------------------------- */
 
 export async function loginUser(_req: Request, res: Response) {
   res

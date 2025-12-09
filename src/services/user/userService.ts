@@ -110,7 +110,6 @@ export function getPhoneByAccountId(accountid: string): string | null {
     return null;
   }
 }
-// 🆕 Signup: create auth user + profile row
 export async function signupUser(payload: {
   email: string;
   password: string;
@@ -127,71 +126,76 @@ export async function signupUser(payload: {
   dateOfBirth?: string;
   phone?: string; // EXPECTS already E.164 from frontend hook
 }) {
+  // Optional: simple E.164 validation
+  const isValidE164 = (p?: string) => /^\+\d{1,15}$/.test(p ?? "");
+
+  if (DEBUG) console.log("DEBUG incoming phone:", payload.phone);
+
+  // Throw if phone is provided but invalid
+  if (payload.phone && !isValidE164(payload.phone)) {
+    throw new Error("Invalid phone format. Must be E.164 (+1234567890).");
+  }
+
+  // Build args for Appwrite auth user creation
+  const createArgs = [
+    ID.unique(),
+    payload.email,
+    payload.password,
+    `${payload.firstName} ${payload.surname}`,
+  ];
+
+  let authUser;
   try {
-    if (DEBUG) console.log("DEBUG incoming phone:", payload.phone);
+    authUser = await users.create(...createArgs);
+    if (DEBUG) console.log("DEBUG authUser created:", authUser);
 
-    // Build args for Appwrite auth user creation
-    const createArgs = [
-      ID.unique(),
-      payload.email,
-      payload.password,
-      `${payload.firstName} ${payload.surname}`,
-    ];
-
-    if (DEBUG) console.log("DEBUG users.create args:", createArgs);
-
-    let authUser;
-    try {
-      authUser = await users.create(...createArgs);
-      if (DEBUG) console.log("DEBUG authUser created:", authUser);
-
-      // Store phone exactly as frontend formatted it (already E.164)
-      savePhone(authUser.$id, payload.phone ?? null);
-    } catch (err) {
-      logError("users.create", err, { payload, createArgs });
-      throw err;
-    }
-
-    let row;
-    try {
-      const rowPayload = {
-        accountid: authUser.$id,
-        email: payload.email.toLowerCase(),
-        firstName: payload.firstName,
-        surname: payload.surname,
-        country: payload.country ?? null,
-        location: payload.location ?? null,
-        role: payload.role ?? "user",
-        status: payload.status ?? "Active",
-        nationalId: payload.nationalId ?? null,
-        bio: payload.bio ?? null,
-        metadata: payload.metadata ?? [],
-        avatarUrl: payload.avatarUrl ?? null,
-        dateOfBirth: payload.dateOfBirth ?? null,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-
-      if (DEBUG) console.log("DEBUG tablesDB.createRow payload:", rowPayload);
-
-      row = await tablesDB.createRow(
-        DB_ID,
-        USERS_TABLE,
-        ID.unique(),
-        rowPayload
-      );
-
-      if (DEBUG) console.log("DEBUG profile row created:", row);
-    } catch (err) {
-      logError("tablesDB.createRow", err, { payload });
-      throw err;
-    }
-
-    return { authUser, profile: safeFormat(row) };
-  } catch (err: unknown) {
-    logError("signupUser", err, { payload });
+    // Store phone exactly as frontend formatted it (already validated E.164)
+    await savePhone(authUser.$id, payload.phone ?? null);
+  } catch (err) {
+    logError("users.create", err, { payload, createArgs });
     throw err;
   }
+
+  // Build profile row payload
+  const rowPayload = {
+    accountid: authUser.$id,
+    email: payload.email.toLowerCase(),
+    firstName: payload.firstName,
+    surname: payload.surname,
+    country: payload.country ?? null,
+    location: payload.location ?? null,
+    role: payload.role ?? "user",
+    status: payload.status ?? "Active",
+    nationalId: payload.nationalId ?? null,
+    bio: payload.bio ?? null,
+    metadata: payload.metadata ?? [],
+    avatarUrl: payload.avatarUrl ?? null,
+    dateOfBirth: payload.dateOfBirth ?? null,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  let row;
+  try {
+    row = await tablesDB.createRow(DB_ID, USERS_TABLE, ID.unique(), rowPayload);
+    if (DEBUG) console.log("DEBUG profile row created:", row);
+  } catch (err) {
+    logError("tablesDB.createRow", err, { payload });
+
+    // ❌ Rollback: delete auth user to prevent dangling user
+    try {
+      await users.delete(authUser.$id);
+      if (DEBUG) console.log("DEBUG rolled back authUser after DB failure");
+    } catch (rollbackErr) {
+      logError("rollback users.delete failed", rollbackErr, {
+        authUserId: authUser.$id,
+      });
+    }
+
+    throw err;
+  }
+
+  return { authUser, profile: safeFormat(row) };
 }
 
 // Alias
