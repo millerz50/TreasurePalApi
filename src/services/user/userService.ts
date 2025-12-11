@@ -97,6 +97,7 @@ export async function signupUser(payload: {
   metadata?: any[];
   dateOfBirth?: string;
   phone?: string;
+  otp?: string; // <-- phone verification OTP from client
 }) {
   logStep("START signupUser()", payload);
 
@@ -110,7 +111,7 @@ export async function signupUser(payload: {
     throw err;
   }
 
-  // 1. Create Appwrite Auth user
+  // 1. Create Appwrite user
   let authUser;
   try {
     authUser = await accounts.create(
@@ -121,37 +122,66 @@ export async function signupUser(payload: {
     );
 
     logStep("Auth user created", authUser);
-
-    // 2. Store phone NUMBER inside Appwrite Auth (requires session)
-    if (payload.phone) {
-      try {
-        // (A) create a temporary session
-        await accounts.createEmailPasswordSession(
-          normalizedEmail,
-          payload.password
-        );
-        logStep("Temporary session created");
-
-        // (B) update phone (this now WORKS)
-        await accounts.updatePhone(payload.phone, payload.password);
-        logStep("Phone updated in Appwrite", payload.phone);
-
-        // (C) delete session
-        await accounts.deleteSession("current");
-        logStep("Temporary session removed");
-      } catch (err) {
-        logError("accounts.updatePhone FAILED", err, {
-          phone: payload.phone,
-          email: normalizedEmail,
-        });
-      }
-    }
   } catch (err: any) {
     logError("accounts.create FAILED", err, { email: normalizedEmail });
     throw err;
   }
 
-  // 3. Build DB row payload (NO PASSWORD, NO PHONE)
+  // 2. Phone Verification Flow
+  if (payload.phone) {
+    try {
+      // Step A: Create temporary session
+      await accounts.createEmailPasswordSession(
+        normalizedEmail,
+        payload.password
+      );
+      logStep("Temporary session created");
+
+      // Step B: Attempt to set the phone
+      await accounts.updatePhone(payload.phone, payload.password);
+      logStep("Phone set. Sending OTP…");
+
+      // Step C: Send OTP
+      const token = await accounts.createPhoneToken(
+        authUser.$id,
+        payload.phone
+      );
+      logStep("OTP sent", token);
+
+      // Step D: Client must supply OTP back to verify
+      if (!payload.otp) {
+        return {
+          status: "PENDING_PHONE_VERIFICATION",
+          message: "OTP sent to phone. Supply `otp` field to verify.",
+          authUser,
+        };
+      }
+
+      // Step E: Verify OTP
+      await accounts.updatePhoneSession(authUser.$id, payload.otp);
+
+      logStep("Phone verification successful");
+
+      // Clean session
+      await accounts.deleteSession("current");
+    } catch (err) {
+      logError("PHONE_VERIFICATION_FAILED", err, {
+        phone: payload.phone,
+        email: normalizedEmail,
+      });
+      throw new Error("Phone verification failed. Wrong OTP?");
+    }
+  }
+
+  // 3. Send email verification link
+  try {
+    await accounts.createVerification(process.env.EMAIL_VERIFY_REDIRECT!);
+    logStep("Email verification sent");
+  } catch (err) {
+    logError("EMAIL_VERIFICATION_FAILED", err, {});
+  }
+
+  // 4. Create Database Profile
   const rowPayload: UserRow = {
     accountid: authUser.$id,
     email: normalizedEmail,
@@ -168,35 +198,27 @@ export async function signupUser(payload: {
     agentId: ID.unique(),
   };
 
-  logStep("Prepared DB rowPayload", rowPayload);
-
-  // 4. Save DB Profile
   const rowId = ID.unique();
   let row;
-
   try {
     row = await tablesDB.createRow(DB_ID, USERS_TABLE, rowId, rowPayload, [
       Permission.read(Role.user(authUser.$id)),
       Permission.update(Role.user(authUser.$id)),
       Permission.delete(Role.user(authUser.$id)),
     ]);
-
-    logStep("Profile row created successfully", row);
   } catch (err) {
     logError("tablesDB.createRow FAILED", err, { rowPayload });
 
     // rollback auth user
-    try {
-      await usersService.delete(authUser.$id);
-      logStep("Rollback: deleted Appwrite auth user", authUser.$id);
-    } catch (rollbackErr) {
-      logError("Rollback FAILED", rollbackErr, { authUserId: authUser.$id });
-    }
-
+    await usersService.delete(authUser.$id);
     throw err;
   }
 
-  return { authUser, profile: safeFormat(row) };
+  return {
+    status: "SUCCESS",
+    authUser,
+    profile: safeFormat(row),
+  };
 }
 
 // ----------------------------
