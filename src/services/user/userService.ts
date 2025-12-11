@@ -82,7 +82,7 @@ function logError(
 }
 
 // ----------------------------
-// SIGNUP USER (MAIN FUNCTION)
+// SIGNUP USER
 // ----------------------------
 export async function signupUser(payload: {
   email: string;
@@ -112,7 +112,7 @@ export async function signupUser(payload: {
     throw err;
   }
 
-  // 1. Create Appwrite user
+  // 1. Create Appwrite user in Auth
   let authUser;
   try {
     authUser = await accounts.create(
@@ -150,7 +150,7 @@ export async function signupUser(payload: {
         return {
           status: "PENDING_PHONE_VERIFICATION",
           message: "OTP sent to phone. Supply `otp` field to verify.",
-          authUser,
+          userId: authUser.$id,
         };
       }
 
@@ -168,9 +168,13 @@ export async function signupUser(payload: {
     }
   }
 
-  // 3. Send email verification link
+  // 3. Send email verification link (REQUIRES URL)
   try {
-    await accounts.createVerification(process.env.EMAIL_VERIFY_REDIRECT!);
+    const url = process.env.EMAIL_VERIFY_REDIRECT!;
+    if (!url) throw new Error("EMAIL_VERIFY_REDIRECT missing");
+
+    await accounts.createVerification(url);
+
     logStep("Email verification sent");
   } catch (err) {
     logError("EMAIL_VERIFICATION_FAILED", err, {});
@@ -195,6 +199,7 @@ export async function signupUser(payload: {
 
   const rowId = ID.unique();
   let row;
+
   try {
     row = await tablesDB.createRow(DB_ID, USERS_TABLE, rowId, rowPayload, [
       Permission.read(Role.user(authUser.$id)),
@@ -207,25 +212,25 @@ export async function signupUser(payload: {
     throw err;
   }
 
-  // 🔥 FIXED RESPONSE (NOW RETURNS userId + profileId)
+  // FINAL RESPONSE
   return {
     status: "SUCCESS",
-    userId: authUser.$id, // <-- REAL APPWRITE AUTH ID
-    profileId: row.$id, // <-- DATABASE PROFILE ID
+    userId: authUser.$id, // Auth ID (Option A)
+    profileId: row.$id, // DB Row ID
     authUser,
     profile: safeFormat(row),
   };
 }
 
 // ----------------------------
-// COMPATIBILITY WRAPPER
+// COMPATIBILITY
 // ----------------------------
 export async function createUser(payload: Parameters<typeof signupUser>[0]) {
   return signupUser(payload);
 }
 
 // ----------------------------
-// GETTER FUNCTIONS
+// GETTERS
 // ----------------------------
 export async function getUserById(userId: string) {
   try {
@@ -275,6 +280,7 @@ export async function updateUser(
 ) {
   try {
     if ("password" in updates) delete (updates as any).password;
+
     const row = await tablesDB.updateRow(DB_ID, USERS_TABLE, userId, updates);
     return safeFormat(row);
   } catch (err) {
