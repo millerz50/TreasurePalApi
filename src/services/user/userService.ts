@@ -29,6 +29,7 @@ if (!DB_ID || !USERS_TABLE) {
     `❌ Missing Appwrite config: DB_ID=${DB_ID}, USERS_TABLE=${USERS_TABLE}`
   );
 }
+
 // ----------------------------
 // HELPERS
 // ----------------------------
@@ -97,7 +98,7 @@ export async function signupUser(payload: {
   metadata?: any[];
   dateOfBirth?: string;
   phone?: string;
-  otp?: string; // <-- phone verification OTP from client
+  otp?: string;
 }) {
   logStep("START signupUser()", payload);
 
@@ -130,25 +131,21 @@ export async function signupUser(payload: {
   // 2. Phone Verification Flow
   if (payload.phone) {
     try {
-      // Step A: Create temporary session
       await accounts.createEmailPasswordSession(
         normalizedEmail,
         payload.password
       );
       logStep("Temporary session created");
 
-      // Step B: Attempt to set the phone
       await accounts.updatePhone(payload.phone, payload.password);
       logStep("Phone set. Sending OTP…");
 
-      // Step C: Send OTP
       const token = await accounts.createPhoneToken(
         authUser.$id,
         payload.phone
       );
       logStep("OTP sent", token);
 
-      // Step D: Client must supply OTP back to verify
       if (!payload.otp) {
         return {
           status: "PENDING_PHONE_VERIFICATION",
@@ -157,12 +154,10 @@ export async function signupUser(payload: {
         };
       }
 
-      // Step E: Verify OTP
       await accounts.updatePhoneSession(authUser.$id, payload.otp);
 
       logStep("Phone verification successful");
 
-      // Clean session
       await accounts.deleteSession("current");
     } catch (err) {
       logError("PHONE_VERIFICATION_FAILED", err, {
@@ -208,14 +203,15 @@ export async function signupUser(payload: {
     ]);
   } catch (err) {
     logError("tablesDB.createRow FAILED", err, { rowPayload });
-
-    // rollback auth user
     await usersService.delete(authUser.$id);
     throw err;
   }
 
+  // 🔥 FIXED RESPONSE (NOW RETURNS userId + profileId)
   return {
     status: "SUCCESS",
+    userId: authUser.$id, // <-- REAL APPWRITE AUTH ID
+    profileId: row.$id, // <-- DATABASE PROFILE ID
     authUser,
     profile: safeFormat(row),
   };
