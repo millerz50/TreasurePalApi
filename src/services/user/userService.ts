@@ -18,6 +18,7 @@ const client = new Client()
 
 export const tablesDB = new TablesDB(client);
 const accounts = new sdk.Account(client);
+const usersService = new sdk.Users(client); // used for admin deletion when rolling back
 
 const DB_ID = process.env.APPWRITE_DATABASE_ID!;
 const USERS_TABLE = process.env.APPWRITE_USERTABLE_ID || "user";
@@ -83,9 +84,6 @@ function logError(
 // ----------------------------
 // CREATE USER WITH APPWRITE AUTH
 // ----------------------------
-// ----------------------------
-// CREATE USER WITH APPWRITE AUTH
-// ----------------------------
 export async function signupUser(payload: {
   email: string;
   password: string;
@@ -110,7 +108,7 @@ export async function signupUser(payload: {
   }
 
   // 1. Create Appwrite Auth user (raw password only)
-  let authUser;
+  let authUser: any;
   try {
     authUser = await accounts.create(
       ID.unique(),
@@ -120,18 +118,11 @@ export async function signupUser(payload: {
     );
     logStep("Auth user created", authUser);
 
-    // Save phone if provided
-    if (payload.phone) {
-      try {
-        await accounts.updatePhone(payload.phone, payload.password);
-        logStep("Phone updated in Appwrite", payload.phone);
-      } catch (err) {
-        logError("accounts.updatePhone FAILED", err, {
-          phone: payload.phone,
-          email: payload.email,
-        });
-      }
-    }
+    // NOTE: accounts.updatePhone requires an authenticated session for the account.
+    // Attempting to call updatePhone immediately after create (without a session)
+    // will often fail. We avoid calling accounts.updatePhone here to prevent 500s.
+    // Instead, store phone in the DB rowPayload (below) and let the user update
+    // phone via a proper authenticated flow if needed.
   } catch (err) {
     logError("accounts.create FAILED", err, { email: payload.email });
     throw err;
@@ -158,7 +149,7 @@ export async function signupUser(payload: {
   logStep("Prepared DB rowPayload", rowPayload);
 
   // 3. Save profile in DB with permissions
-  let row;
+  let row: any;
   const rowId = ID.unique();
   try {
     row = await tablesDB.createRow(DB_ID, USERS_TABLE, rowId, rowPayload, [
@@ -169,17 +160,33 @@ export async function signupUser(payload: {
     logStep("Profile row created successfully", row);
   } catch (err) {
     logError("tablesDB.createRow FAILED", err, { rowPayload });
-    // rollback auth user
+
+    // rollback auth user: delete the created user using Users service (admin)
     try {
-      await accounts.deleteSession(authUser.$id); // delete user if DB fails
-    } catch {}
+      if (authUser && authUser.$id) {
+        await usersService.delete(authUser.$id);
+        logStep("Rolled back auth user (deleted)", authUser.$id);
+      }
+    } catch (deleteErr) {
+      // log but don't mask original error
+      logError("usersService.delete FAILED during rollback", deleteErr, {
+        authUserId: authUser?.$id,
+      });
+    }
+
     throw err;
   }
 
-  // Delete session after signup (optional)
+  // Delete session after signup (optional). Use "current" to remove current session.
   try {
     await accounts.deleteSession("current");
-  } catch {}
+  } catch (e) {
+    // ignore; not critical
+    logStep(
+      "accounts.deleteSession('current') ignored",
+      (e as any)?.message ?? e
+    );
+  }
 
   return { authUser, profile: safeFormat(row) };
 }
