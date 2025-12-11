@@ -9,7 +9,7 @@ import sdk, {
 } from "node-appwrite";
 
 /* ------------------------------------------
-    LAZY ENV + CLIENT
+    ENV + CLIENT
 ------------------------------------------- */
 
 function getEnv(key: string, fallback?: string): string | undefined {
@@ -28,14 +28,10 @@ let _client: Client | null = null;
 function getClient(): Client {
   if (_client) return _client;
 
-  const endpoint = requireEnv("APPWRITE_ENDPOINT");
-  const project = requireEnv("APPWRITE_PROJECT_ID");
-  const apiKey = requireEnv("APPWRITE_API_KEY");
-
   _client = new Client()
-    .setEndpoint(endpoint)
-    .setProject(project)
-    .setKey(apiKey);
+    .setEndpoint(requireEnv("APPWRITE_ENDPOINT"))
+    .setProject(requireEnv("APPWRITE_PROJECT_ID"))
+    .setKey(requireEnv("APPWRITE_API_KEY"));
 
   return _client;
 }
@@ -109,11 +105,11 @@ function logError(operation: string, err: unknown, ctx: any = {}) {
 }
 
 /* ------------------------------------------
-    SIGNUP USER (Backend – Profile Only)
+    SIGNUP USER – CREATE PROFILE ONLY
 ------------------------------------------- */
 
 export async function signupUser(payload: {
-  accountId: string; // <-- from frontend Account.create()
+  accountId: string;
   email: string;
   firstName: string;
   surname: string;
@@ -127,12 +123,12 @@ export async function signupUser(payload: {
   dateOfBirth?: string;
   phone?: string | null;
 }) {
-  logStep("START signupUser (PROFILE ONLY)");
+  logStep("START signupUser");
 
-  const normalizedEmail = payload.email.toLowerCase().trim();
   const tablesDB = getTablesDB();
+  const normalizedEmail = payload.email.toLowerCase().trim();
 
-  /* 0. Prevent duplicate profiles */
+  /* Prevent duplicate profiles */
   const existing = await findByEmail(normalizedEmail).catch(() => null);
   if (existing) {
     const err: any = new Error("User already exists with this email.");
@@ -140,7 +136,7 @@ export async function signupUser(payload: {
     throw err;
   }
 
-  /* 1. Build DB profile payload */
+  /* Build row payload */
   const rowPayload: UserRow = {
     accountid: payload.accountId,
     email: normalizedEmail,
@@ -158,7 +154,7 @@ export async function signupUser(payload: {
     agentId: ID.unique(),
   };
 
-  /* 2. Insert DB profile */
+  /* Insert DB row */
   const row = await tablesDB.createRow(
     DB_ID,
     USERS_TABLE,
@@ -171,7 +167,6 @@ export async function signupUser(payload: {
     ]
   );
 
-  /* 3. Return success */
   return {
     status: "SUCCESS",
     userId: payload.accountId,
@@ -190,8 +185,7 @@ export async function createUser(p: Parameters<typeof signupUser>[0]) {
 
 export async function getUserById(id: string) {
   try {
-    const tablesDB = getTablesDB();
-    const row = await tablesDB.getRow(DB_ID, USERS_TABLE, id);
+    const row = await getTablesDB().getRow(DB_ID, USERS_TABLE, id);
     return safeFormat(row);
   } catch (err) {
     logError("getUserById", err, { id });
@@ -224,7 +218,7 @@ export async function findByEmail(email: string) {
 }
 
 /* ------------------------------------------
-    LIST USERS
+    LIST
 ------------------------------------------- */
 
 export async function listUsers(limit = 100, offset = 0) {
@@ -235,8 +229,8 @@ export async function listUsers(limit = 100, offset = 0) {
       [],
       String(limit)
     );
-    const rows = res.rows ?? [];
 
+    const rows = res.rows ?? [];
     return {
       total: res.total ?? rows.length,
       users: rows.slice(offset, offset + limit).map(safeFormat),
@@ -254,7 +248,9 @@ export async function listUsers(limit = 100, offset = 0) {
 export async function updateUser(id: string, updates: Record<string, any>) {
   try {
     if ("password" in updates) delete updates.password;
+
     const row = await getTablesDB().updateRow(DB_ID, USERS_TABLE, id, updates);
+
     return safeFormat(row);
   } catch (err) {
     logError("updateUser", err, { id, updates });
