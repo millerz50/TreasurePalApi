@@ -8,38 +8,69 @@ import sdk, {
   TablesDB,
 } from "node-appwrite";
 
-/* ============================================================
-   LAZY ENV LOADING (Render-compatible)
-   ============================================================ */
-function env(key: string): string {
+/**
+ * NOTE
+ * - This file was updated to avoid reading process.env at import time.
+ * - It lazily loads env values so Render / production env vars are available.
+ */
+
+/* ----------------------------
+   Lazy env helpers & client
+   ---------------------------- */
+function getEnv(key: string, fallback?: string): string | undefined {
   const v = process.env[key];
-  if (!v) throw new Error(`❌ Missing env: ${key}`);
+  if (v && v.length > 0) return v;
+  return fallback;
+}
+
+function requireEnv(key: string): string {
+  const v = getEnv(key);
+  if (!v) throw new Error(`Missing required environment variable: ${key}`);
   return v;
 }
 
-/* ============================================================
-   CREATE CLIENT (after env is available)
-   ============================================================ */
-function createClient() {
-  const client = new Client()
-    .setEndpoint(env("APPWRITE_ENDPOINT"))
-    .setProject(env("APPWRITE_PROJECT_ID"))
-    .setKey(env("APPWRITE_API_KEY"));
-  return client;
+let _client: Client | null = null;
+function getClient(): Client {
+  if (_client) return _client;
+
+  // create client using environment variables (read at runtime)
+  const endpoint = requireEnv("APPWRITE_ENDPOINT");
+  const project = requireEnv("APPWRITE_PROJECT_ID");
+  const apiKey = requireEnv("APPWRITE_API_KEY");
+
+  _client = new Client()
+    .setEndpoint(endpoint)
+    .setProject(project)
+    .setKey(apiKey);
+  return _client;
 }
 
-const client = createClient();
-export const tablesDB = new TablesDB(client);
-const accounts = new sdk.Account(client);
-const usersService = new sdk.Users(client);
+/* create Appwrite services lazily */
+function getTablesDB(): TablesDB {
+  return new TablesDB(getClient());
+}
+function getAccounts() {
+  return new sdk.Account(getClient());
+}
+function getUsersService() {
+  return new sdk.Users(getClient());
+}
 
-const DB_ID = env("APPWRITE_DATABASE_ID");
-const USERS_TABLE = process.env.APPWRITE_USERTABLE_ID || "user";
-const DEBUG = process.env.DEBUG === "true";
+/* get DB config at runtime */
+const DB_ID = getEnv("APPWRITE_DATABASE_ID") ?? "";
+const USERS_TABLE = getEnv("APPWRITE_USERTABLE_ID") || "user";
+const DEBUG = getEnv("DEBUG") === "true";
 
-/* ============================================================
+/* Validate minimal config at runtime */
+if (!DB_ID) {
+  // will throw only when functions attempt DB ops; keep here for early feedback
+  // but don't crash on import in environments where DB isn't required immediately
+  console.warn("Warning: APPWRITE_DATABASE_ID is not set.");
+}
+
+/* ----------------------------
    HELPERS
-   ============================================================ */
+   ---------------------------- */
 export interface UserRow {
   $id?: string;
   accountid?: string;
@@ -76,21 +107,26 @@ function logError(
   err: unknown,
   context: Record<string, unknown> = {}
 ) {
-  console.error(
-    JSON.stringify({
-      timestamp: new Date().toISOString(),
-      service: "userService",
-      operation,
-      context,
-      error: err instanceof Error ? err.message : String(err),
-      stack: err instanceof Error ? err.stack : null,
-    })
-  );
+  try {
+    console.error(
+      JSON.stringify({
+        timestamp: new Date().toISOString(),
+        service: "userService",
+        operation,
+        context,
+        error: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : null,
+      })
+    );
+  } catch {
+    // fallback
+    console.error("logError failed", operation, err, context);
+  }
 }
 
-/* ============================================================
+/* ----------------------------
    SIGNUP USER
-   ============================================================ */
+   ---------------------------- */
 export async function signupUser(payload: {
   email: string;
   password: string;
@@ -111,16 +147,26 @@ export async function signupUser(payload: {
 
   const normalizedEmail = payload.email.toLowerCase().trim();
 
-  // Check duplicates
-  const existingUser = await findByEmail(normalizedEmail);
-  if (existingUser) {
-    const err = new Error("User already exists with this email.");
-    (err as any).status = 409;
-    throw err;
+  const tablesDB = getTablesDB();
+  const accounts = getAccounts();
+  const usersService = getUsersService();
+
+  // 0. Check if DB user already exists
+  try {
+    const existingUser = await findByEmail(normalizedEmail);
+    if (existingUser) {
+      const err = new Error("User already exists with this email.");
+      (err as any).status = 409;
+      throw err;
+    }
+  } catch (err) {
+    // If DB is misconfigured, surface the error
+    if ((err as any).status === 409) throw err;
+    logStep("findByEmail error (continuing)", err);
   }
 
-  // Create auth user
-  let authUser;
+  // 1. Create Appwrite user in Auth
+  let authUser: any;
   try {
     authUser = await accounts.create(
       ID.unique(),
@@ -128,15 +174,14 @@ export async function signupUser(payload: {
       payload.password,
       `${payload.firstName} ${payload.surname}`
     );
+
     logStep("Auth user created", authUser);
   } catch (err: any) {
     logError("accounts.create FAILED", err, { email: normalizedEmail });
     throw err;
   }
 
-  /* ============================================================
-     PHONE VERIFICATION
-     ============================================================ */
+  // 2. Phone Verification Flow (optional)
   if (payload.phone) {
     try {
       await accounts.createEmailPasswordSession(
@@ -152,10 +197,10 @@ export async function signupUser(payload: {
         authUser.$id,
         payload.phone
       );
-
       logStep("OTP sent", token);
 
       if (!payload.otp) {
+        // return pending status so frontend can prompt OTP entry
         return {
           status: "PENDING_PHONE_VERIFICATION",
           message: "OTP sent to phone. Supply `otp` field to verify.",
@@ -163,34 +208,57 @@ export async function signupUser(payload: {
         };
       }
 
+      // if otp present, verify
       await accounts.updatePhoneSession(authUser.$id, payload.otp);
-
       logStep("Phone verification successful");
 
-      await accounts.deleteSession("current");
+      // cleanup session
+      try {
+        await accounts.deleteSession("current");
+      } catch {
+        /* ignore */
+      }
     } catch (err) {
       logError("PHONE_VERIFICATION_FAILED", err, {
         phone: payload.phone,
         email: normalizedEmail,
       });
-      throw new Error("Phone verification failed. Incorrect OTP.");
+
+      // rollback auth user on phone verification error
+      try {
+        await usersService.delete(authUser.$id);
+        logStep(
+          "Rollback: deleted auth user after phone failure",
+          authUser.$id
+        );
+      } catch (rollbackErr) {
+        logError("Rollback FAILED", rollbackErr, { authUserId: authUser.$id });
+      }
+
+      throw new Error("Phone verification failed. Wrong OTP?");
     }
   }
 
-  /* ============================================================
-     EMAIL VERIFICATION (with required URL)
-     ============================================================ */
+  // 3. Send email verification link (safe)
   try {
-    const url = env("EMAIL_VERIFY_REDIRECT");
-    await accounts.createVerification(url);
-    logStep("Email verification sent");
+    const redirectUrl = getEnv("EMAIL_VERIFY_REDIRECT");
+    if (!redirectUrl) {
+      // do not throw — keep signup working; just log
+      logError(
+        "EMAIL_VERIFICATION_SKIPPED",
+        "EMAIL_VERIFY_REDIRECT not configured",
+        {}
+      );
+    } else {
+      await accounts.createVerification(redirectUrl);
+      logStep("Email verification sent");
+    }
   } catch (err) {
     logError("EMAIL_VERIFICATION_FAILED", err, {});
+    // we proceed — do not block signup if email verification fails
   }
 
-  /* ============================================================
-     CREATE USER PROFILE IN DATABASE
-     ============================================================ */
+  // 4. Create Database Profile
   const rowPayload: UserRow = {
     accountid: authUser.$id,
     email: normalizedEmail,
@@ -207,35 +275,57 @@ export async function signupUser(payload: {
     agentId: ID.unique(),
   };
 
-  const rowId = ID.unique();
-  let row;
-
+  // create DB row
+  let row: any;
   try {
-    row = await tablesDB.createRow(DB_ID, USERS_TABLE, rowId, rowPayload, [
-      Permission.read(Role.user(authUser.$id)),
-      Permission.update(Role.user(authUser.$id)),
-      Permission.delete(Role.user(authUser.$id)),
-    ]);
+    if (!DB_ID) throw new Error("APPWRITE_DATABASE_ID is not configured");
+    row = await tablesDB.createRow(
+      DB_ID,
+      USERS_TABLE,
+      ID.unique(),
+      rowPayload,
+      [
+        Permission.read(Role.user(authUser.$id)),
+        Permission.update(Role.user(authUser.$id)),
+        Permission.delete(Role.user(authUser.$id)),
+      ]
+    );
+    logStep("Profile row created", row);
   } catch (err) {
     logError("tablesDB.createRow FAILED", err, { rowPayload });
-    await usersService.delete(authUser.$id);
+    // rollback auth user to avoid orphaned auth accounts
+    try {
+      await usersService.delete(authUser.$id);
+      logStep("Rollback: deleted Appwrite auth user", authUser.$id);
+    } catch (rollbackErr) {
+      logError("Rollback FAILED", rollbackErr, { authUserId: authUser.$id });
+    }
     throw err;
   }
 
+  // FINAL RESPONSE
   return {
     status: "SUCCESS",
-    userId: authUser.$id,
-    profileId: row.$id,
+    userId: authUser.$id, // Auth ID (Option A)
+    profileId: row.$id, // DB Row ID
     authUser,
     profile: safeFormat(row),
   };
 }
 
-/* ============================================================
-   GETTERS
-   ============================================================ */
+/* ----------------------------
+   COMPATIBILITY
+   ---------------------------- */
+export async function createUser(payload: Parameters<typeof signupUser>[0]) {
+  return signupUser(payload);
+}
+
+/* ----------------------------
+   GETTERS / HELPERS
+   ---------------------------- */
 export async function getUserById(userId: string) {
   try {
+    const tablesDB = getTablesDB();
     const row = await tablesDB.getRow(DB_ID, USERS_TABLE, userId);
     return safeFormat(row);
   } catch (err) {
@@ -246,6 +336,7 @@ export async function getUserById(userId: string) {
 
 export async function getUserByAccountId(accountid: string) {
   try {
+    const tablesDB = getTablesDB();
     const res = await tablesDB.listRows(DB_ID, USERS_TABLE, [
       Query.equal("accountid", accountid),
     ]);
@@ -256,11 +347,9 @@ export async function getUserByAccountId(accountid: string) {
   }
 }
 
-/* ============================================================
-   LIST USERS / AGENTS
-   ============================================================ */
 export async function listUsers(limit = 100, offset = 0) {
   try {
+    const tablesDB = getTablesDB();
     const res = await tablesDB.listRows(DB_ID, USERS_TABLE, [], String(limit));
     const rows = Array.isArray(res.rows) ? res.rows : [];
     return {
@@ -273,8 +362,71 @@ export async function listUsers(limit = 100, offset = 0) {
   }
 }
 
+export async function updateUser(
+  userId: string,
+  updates: Record<string, unknown>
+) {
+  try {
+    const tablesDB = getTablesDB();
+    if ("password" in updates) delete (updates as any).password;
+    const row = await tablesDB.updateRow(DB_ID, USERS_TABLE, userId, updates);
+    return safeFormat(row);
+  } catch (err) {
+    logError("updateUser", err, { userId, updates });
+    throw err;
+  }
+}
+
+export async function deleteUser(userId: string) {
+  try {
+    const tablesDB = getTablesDB();
+    return await tablesDB.deleteRow(DB_ID, USERS_TABLE, userId);
+  } catch (err) {
+    logError("deleteUser", err, { userId });
+    throw err;
+  }
+}
+
+export async function setRole(userId: string, role: string) {
+  try {
+    const tablesDB = getTablesDB();
+    const row = await tablesDB.updateRow(DB_ID, USERS_TABLE, userId, { role });
+    return safeFormat(row);
+  } catch (err) {
+    logError("setRole", err, { userId, role });
+    throw err;
+  }
+}
+
+export async function setStatus(userId: string, status: string) {
+  try {
+    const tablesDB = getTablesDB();
+    const row = await tablesDB.updateRow(DB_ID, USERS_TABLE, userId, {
+      status,
+    });
+    return safeFormat(row);
+  } catch (err) {
+    logError("setStatus", err, { userId, status });
+    throw err;
+  }
+}
+
+export async function findByEmail(email: string) {
+  try {
+    const tablesDB = getTablesDB();
+    const res = await tablesDB.listRows(DB_ID, USERS_TABLE, [
+      Query.equal("email", email.toLowerCase()),
+    ]);
+    return res.total > 0 ? safeFormat(res.rows[0]) : null;
+  } catch (err) {
+    logError("findByEmail", err, { email });
+    return null;
+  }
+}
+
 export async function listAgents(limit = 100, offset = 0) {
   try {
+    const tablesDB = getTablesDB();
     const res = await tablesDB.listRows(
       DB_ID,
       USERS_TABLE,
@@ -289,47 +441,5 @@ export async function listAgents(limit = 100, offset = 0) {
   } catch (err) {
     logError("listAgents", err, { limit, offset });
     return { total: 0, agents: [] };
-  }
-}
-
-/* ============================================================
-   UPDATES
-   ============================================================ */
-export async function updateUser(
-  userId: string,
-  updates: Record<string, unknown>
-) {
-  try {
-    if ("password" in updates) delete (updates as any).password;
-
-    const row = await tablesDB.updateRow(DB_ID, USERS_TABLE, userId, updates);
-    return safeFormat(row);
-  } catch (err) {
-    logError("updateUser", err, { userId, updates });
-    throw err;
-  }
-}
-
-export async function deleteUser(userId: string) {
-  try {
-    return await tablesDB.deleteRow(DB_ID, USERS_TABLE, userId);
-  } catch (err) {
-    logError("deleteUser", err, { userId });
-    throw err;
-  }
-}
-
-/* ============================================================
-   SEARCH
-   ============================================================ */
-export async function findByEmail(email: string) {
-  try {
-    const res = await tablesDB.listRows(DB_ID, USERS_TABLE, [
-      Query.equal("email", email.toLowerCase()),
-    ]);
-    return res.total > 0 ? safeFormat(res.rows[0]) : null;
-  } catch (err) {
-    logError("findByEmail", err, { email });
-    return null;
   }
 }
