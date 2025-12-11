@@ -137,6 +137,7 @@ export async function signup(req: Request, res: Response) {
       avatarUrl: avatarFileId,
       dateOfBirth,
       agentId,
+      accountId: req.body.accountId,
     };
 
     // Create user in DB

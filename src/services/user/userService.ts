@@ -109,10 +109,11 @@ function logError(operation: string, err: unknown, ctx: any = {}) {
 }
 
 /* ------------------------------------------
-    SIGNUP USER
+    SIGNUP USER (Backend)
 ------------------------------------------- */
 
 export async function signupUser(payload: {
+  accountId: string; // <-- passed from frontend!
   email: string;
   password: string;
   firstName: string;
@@ -125,7 +126,7 @@ export async function signupUser(payload: {
   bio?: string;
   metadata?: any[];
   dateOfBirth?: string;
-  phone?: string;
+  phone?: string | null;
   otp?: string;
 }) {
   logStep("START signupUser");
@@ -135,7 +136,9 @@ export async function signupUser(payload: {
   const accounts = getAccounts();
   const usersService = getUsersService();
 
-  /* 0. Check DB profile exists */
+  const authUserId = payload.accountId; // <-- IMPORTANT
+
+  /* 0. Check if DB profile exists */
   try {
     const existing = await findByEmail(normalizedEmail);
     if (existing) {
@@ -148,72 +151,40 @@ export async function signupUser(payload: {
     logStep("findByEmail error safe-continuing", err);
   }
 
-  /* 1. Create Auth user */
-  let authUser: any;
-  try {
-    authUser = await accounts.create(
-      ID.unique(),
-      normalizedEmail,
-      payload.password,
-      `${payload.firstName} ${payload.surname}`
-    );
-    logStep("Auth user created", authUser);
-  } catch (err) {
-    logError("AUTH_CREATE_FAILED", err, { email: normalizedEmail });
-    throw err;
-  }
+  /* 1. DO NOT create auth user here
+        (Frontend already created it)
+  */
 
   /* 2. Phone verification */
   if (payload.phone) {
     try {
-      await usersService.updatePhone(authUser.$id, payload.phone);
+      await usersService.updatePhone(authUserId, payload.phone);
       logStep("Phone updated");
 
-      const token = await accounts.createPhoneToken(
-        authUser.$id,
-        payload.phone
-      );
+      const token = await accounts.createPhoneToken(authUserId, payload.phone);
+
       logStep("OTP sent", token);
 
       if (!payload.otp) {
         return {
           status: "PENDING_PHONE_VERIFICATION",
           message: "OTP sent. Provide `otp` to continue signup.",
-          userId: authUser.$id,
+          userId: authUserId,
         };
       }
 
-      await accounts.updatePhoneVerification(authUser.$id, payload.otp);
-
+      await accounts.updatePhoneVerification(authUserId, payload.otp);
       logStep("Phone verification success");
     } catch (err) {
       logError("PHONE_VERIFY_FAIL", err, { phone: payload.phone });
-
-      try {
-        await usersService.delete(authUser.$id);
-      } catch {}
 
       throw new Error("Phone verification failed. Wrong OTP?");
     }
   }
 
-  /* 3. Email verification */
-  try {
-    const redirect = getEnv("EMAIL_VERIFY_REDIRECT");
-    if (redirect) {
-      await accounts.createVerification(redirect);
-
-      logStep("Email verification sent");
-    } else {
-      logError("EMAIL_VERIFY_SKIPPED", "Missing EMAIL_VERIFY_REDIRECT");
-    }
-  } catch (err) {
-    logError("EMAIL_VERIFY_FAIL", err);
-  }
-
-  /* 4. Create DB Profile */
+  /* 3. DB Profile Creation */
   const rowPayload: UserRow = {
-    accountid: authUser.$id,
+    accountid: authUserId,
     email: normalizedEmail,
     firstName: payload.firstName,
     surname: payload.surname,
@@ -238,31 +209,25 @@ export async function signupUser(payload: {
       ID.unique(),
       rowPayload,
       [
-        Permission.read(Role.user(authUser.$id)),
-        Permission.update(Role.user(authUser.$id)),
-        Permission.delete(Role.user(authUser.$id)),
+        Permission.read(Role.user(authUserId)),
+        Permission.update(Role.user(authUserId)),
+        Permission.delete(Role.user(authUserId)),
       ]
     );
   } catch (err) {
     logError("DB_CREATE_FAIL", err, { rowPayload });
-
-    try {
-      await usersService.delete(authUser.$id);
-    } catch {}
-
     throw err;
   }
 
   return {
     status: "SUCCESS",
-    userId: authUser.$id,
+    userId: authUserId,
     profileId: row.$id,
-    authUser,
     profile: safeFormat(row),
   };
 }
 
-/* Compatibility wrapper */
+/* Compatibility */
 export async function createUser(payload: Parameters<typeof signupUser>[0]) {
   return signupUser(payload);
 }
