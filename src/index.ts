@@ -1,8 +1,10 @@
 // src/index.ts
 import dotenv from "dotenv";
-dotenv.config({
-  path: process.env.NODE_ENV === "production" ? ".env" : ".env.local",
-});
+
+if (process.env.NODE_ENV !== "production") {
+  dotenv.config({ path: ".env.local" });
+}
+// In production Render injects env vars automatically
 
 import compression from "compression";
 import cors from "cors";
@@ -15,10 +17,10 @@ import passport from "passport";
 import { logger } from "./lib/logger";
 
 // Routes
+import activityRouter from "./routes/activity";
 import agentsRoutes from "./routes/agentRoutes";
 import blogRoutes from "./routes/blogsRoutes";
 import dashboardRouter from "./routes/dashboard";
-import activityRouter from "./routes/activity";
 
 import healthRoutes from "./routes/health";
 import propertiesRoutes from "./routes/propertyRoutes";
@@ -222,7 +224,6 @@ app.get(
 );
 // Mount API routers before any catch-all 404
 app.use("/api/activity", activityRouter);
-
 
 //
 // Health-check endpoint
