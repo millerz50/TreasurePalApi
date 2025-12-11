@@ -37,6 +37,7 @@ export interface UserRow {
   $id?: string;
   accountid?: string;
   email?: string;
+  password?: string;
   firstName?: string;
   surname?: string;
   role?: string;
@@ -81,7 +82,7 @@ function logError(
 }
 
 // ----------------------------
-// SIGNUP USER
+// SIGNUP USER (MAIN FUNCTION)
 // ----------------------------
 export async function signupUser(payload: {
   email: string;
@@ -96,94 +97,51 @@ export async function signupUser(payload: {
   bio?: string;
   metadata?: any[];
   dateOfBirth?: string;
-  phone?: string | null;
+  phone?: string;
 }) {
   logStep("START signupUser()", payload);
 
-  const email = (payload.email ?? "").toLowerCase().trim();
-  if (!email) throw new Error("Email is required");
+  const normalizedEmail = payload.email.toLowerCase().trim();
 
-  // Check DB for profile
-  const existingProfile = await findByEmail(email);
-  if (existingProfile) {
+  // 0. Check if DB user already exists
+  const existingUser = await findByEmail(normalizedEmail);
+  if (existingUser) {
     const err = new Error("User already exists with this email.");
     (err as any).status = 409;
     throw err;
   }
 
-  // Check Appwrite Auth
-  let existingAuthUser: any = null;
-  try {
-    const usersList = await usersService.list();
-    existingAuthUser =
-      usersList.users?.find(
-        (u: any) => (u.email ?? "").toLowerCase() === email
-      ) ?? null;
-  } catch (err) {
-    logStep("usersService.list failed (non-fatal)", err);
-  }
-
-  // If auth exists but DB does not — create DB only
-  if (existingAuthUser) {
-    const rowPayload: UserRow = {
-      accountid: existingAuthUser.$id,
-      email,
-      firstName: payload.firstName,
-      surname: payload.surname,
-      country: payload.country ?? null,
-      location: payload.location ?? null,
-      role: payload.role ?? "user",
-      status: payload.status ?? "Active",
-      nationalId: payload.nationalId ?? null,
-      bio: payload.bio ?? null,
-      metadata: payload.metadata ?? [],
-      dateOfBirth: payload.dateOfBirth ?? null,
-      phone: payload.phone ?? null,
-      agentId: ID.unique(),
-    };
-
-    const row = await tablesDB.createRow(
-      DB_ID,
-      USERS_TABLE,
-      ID.unique(),
-      rowPayload,
-      [
-        Permission.read(Role.user(existingAuthUser.$id)),
-        Permission.update(Role.user(existingAuthUser.$id)),
-        Permission.delete(Role.user(existingAuthUser.$id)),
-      ]
-    );
-
-    return { authUser: existingAuthUser, profile: safeFormat(row) };
-  }
-
-  // Create Appwrite user
-  let authUser: any;
+  // 1. Create Appwrite Auth user
+  let authUser;
   try {
     authUser = await accounts.create(
       ID.unique(),
-      email,
+      normalizedEmail,
       payload.password,
       `${payload.firstName} ${payload.surname}`
     );
-  } catch (err: any) {
-    logError("accounts.create FAILED", err, { email });
+    logStep("Auth user created", authUser);
 
-    const msg = (err.message ?? "").toLowerCase();
-    if (msg.includes("exists") || msg.includes("same id")) {
-      const conflict = new Error(
-        "A user with the same id, email, or phone already exists."
-      );
-      (conflict as any).status = 409;
-      throw conflict;
+    if (payload.phone) {
+      try {
+        await accounts.updatePhone(payload.phone, payload.password);
+        logStep("Phone updated in Appwrite", payload.phone);
+      } catch (err) {
+        logError("accounts.updatePhone FAILED", err, {
+          phone: payload.phone,
+          email: normalizedEmail,
+        });
+      }
     }
+  } catch (err: any) {
+    logError("accounts.create FAILED", err, { email: normalizedEmail });
     throw err;
   }
 
-  // Create DB profile
+  // 2. Build DB row payload
   const rowPayload: UserRow = {
     accountid: authUser.$id,
-    email,
+    email: normalizedEmail,
     firstName: payload.firstName,
     surname: payload.surname,
     country: payload.country ?? null,
@@ -192,41 +150,55 @@ export async function signupUser(payload: {
     status: payload.status ?? "Active",
     nationalId: payload.nationalId ?? null,
     bio: payload.bio ?? null,
-    metadata: payload.metadata ?? [],
+    metadata: Array.isArray(payload.metadata) ? [...payload.metadata] : [],
     dateOfBirth: payload.dateOfBirth ?? null,
     phone: payload.phone ?? null,
     agentId: ID.unique(),
   };
 
-  try {
-    const row = await tablesDB.createRow(
-      DB_ID,
-      USERS_TABLE,
-      ID.unique(),
-      rowPayload,
-      [
-        Permission.read(Role.user(authUser.$id)),
-        Permission.update(Role.user(authUser.$id)),
-        Permission.delete(Role.user(authUser.$id)),
-      ]
-    );
+  logStep("Prepared DB rowPayload", rowPayload);
 
-    return { authUser, profile: safeFormat(row) };
+  // 3. Create DB row with correct permissions
+  const rowId = ID.unique();
+  let row;
+  try {
+    row = await tablesDB.createRow(DB_ID, USERS_TABLE, rowId, rowPayload, [
+      Permission.read(Role.user(authUser.$id)),
+      Permission.update(Role.user(authUser.$id)),
+      Permission.delete(Role.user(authUser.$id)),
+    ]);
+    logStep("Profile row created successfully", row);
   } catch (err) {
     logError("tablesDB.createRow FAILED", err, { rowPayload });
 
+    // ❗ FIXED: Proper rollback (delete auth user)
     try {
       await usersService.delete(authUser.$id);
-    } catch {
-      logError("Rollback deleteAuthUser FAILED", err);
+      logStep("Rollback: deleted Appwrite auth user", authUser.$id);
+    } catch (rollbackErr) {
+      logError("Rollback FAILED", rollbackErr, { authUserId: authUser.$id });
     }
 
     throw err;
   }
+
+  // Optional session cleanup
+  try {
+    await accounts.deleteSession("current");
+  } catch {}
+
+  return { authUser, profile: safeFormat(row) };
 }
 
 // ----------------------------
-// GETTERS / UPDATE / DELETE
+// COMPATIBILITY WRAPPER
+// ----------------------------
+export async function createUser(payload: Parameters<typeof signupUser>[0]) {
+  return signupUser(payload);
+}
+
+// ----------------------------
+// GETTER FUNCTIONS
 // ----------------------------
 export async function getUserById(userId: string) {
   try {
@@ -250,24 +222,32 @@ export async function getUserByAccountId(accountid: string) {
   }
 }
 
+// ----------------------------
+// LIST USERS
+// ----------------------------
 export async function listUsers(limit = 100, offset = 0) {
   try {
     const res = await tablesDB.listRows(DB_ID, USERS_TABLE, [], String(limit));
     const rows = Array.isArray(res.rows) ? res.rows : [];
-    const usersList = rows.slice(offset, offset + limit).map(safeFormat);
-    return { total: res.total ?? usersList.length, users: usersList };
+    return {
+      total: res.total ?? rows.length,
+      users: rows.slice(offset, offset + limit).map(safeFormat),
+    };
   } catch (err) {
     logError("listUsers", err, { limit, offset });
     return { total: 0, users: [] };
   }
 }
 
+// ----------------------------
+// UPDATE / DELETE
+// ----------------------------
 export async function updateUser(
   userId: string,
   updates: Record<string, unknown>
 ) {
   try {
-    delete (updates as any).password;
+    if ("password" in updates) delete (updates as any).password;
     const row = await tablesDB.updateRow(DB_ID, USERS_TABLE, userId, updates);
     return safeFormat(row);
   } catch (err) {
@@ -285,6 +265,9 @@ export async function deleteUser(userId: string) {
   }
 }
 
+// ----------------------------
+// ROLE & STATUS
+// ----------------------------
 export async function setRole(userId: string, role: string) {
   try {
     const row = await tablesDB.updateRow(DB_ID, USERS_TABLE, userId, { role });
@@ -307,6 +290,9 @@ export async function setStatus(userId: string, status: string) {
   }
 }
 
+// ----------------------------
+// FIND BY EMAIL
+// ----------------------------
 export async function findByEmail(email: string) {
   try {
     const res = await tablesDB.listRows(DB_ID, USERS_TABLE, [
@@ -331,8 +317,10 @@ export async function listAgents(limit = 100, offset = 0) {
       String(limit)
     );
     const rows = Array.isArray(res.rows) ? res.rows : [];
-    const agentsList = rows.slice(offset, offset + limit).map(safeFormat);
-    return { total: res.total ?? agentsList.length, agents: agentsList };
+    return {
+      total: res.total ?? rows.length,
+      agents: rows.slice(offset, offset + limit).map(safeFormat),
+    };
   } catch (err) {
     logError("listAgents", err, { limit, offset });
     return { total: 0, agents: [] };
