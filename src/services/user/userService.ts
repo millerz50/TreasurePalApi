@@ -18,7 +18,7 @@ const client = new Client()
 
 export const tablesDB = new TablesDB(client);
 const accounts = new sdk.Account(client);
-const usersService = new sdk.Users(client); // used for admin deletion when rolling back
+const usersService = new sdk.Users(client);
 
 const DB_ID = process.env.APPWRITE_DATABASE_ID!;
 const USERS_TABLE = process.env.APPWRITE_USERTABLE_ID || "user";
@@ -37,7 +37,6 @@ export interface UserRow {
   $id?: string;
   accountid?: string;
   email?: string;
-  password?: string;
   firstName?: string;
   surname?: string;
   role?: string;
@@ -82,7 +81,7 @@ function logError(
 }
 
 // ----------------------------
-// CREATE USER WITH APPWRITE AUTH
+// SIGNUP USER
 // ----------------------------
 export async function signupUser(payload: {
   email: string;
@@ -97,41 +96,94 @@ export async function signupUser(payload: {
   bio?: string;
   metadata?: any[];
   dateOfBirth?: string;
-  phone?: string;
+  phone?: string | null;
 }) {
   logStep("START signupUser()", payload);
 
-  // 0. Check if user already exists
-  const existingUser = await findByEmail(payload.email);
-  if (existingUser) {
-    throw new Error("User already exists with this email.");
+  const email = (payload.email ?? "").toLowerCase().trim();
+  if (!email) throw new Error("Email is required");
+
+  // Check DB for profile
+  const existingProfile = await findByEmail(email);
+  if (existingProfile) {
+    const err = new Error("User already exists with this email.");
+    (err as any).status = 409;
+    throw err;
   }
 
-  // 1. Create Appwrite Auth user (raw password only)
+  // Check Appwrite Auth
+  let existingAuthUser: any = null;
+  try {
+    const usersList = await usersService.list();
+    existingAuthUser =
+      usersList.users?.find(
+        (u: any) => (u.email ?? "").toLowerCase() === email
+      ) ?? null;
+  } catch (err) {
+    logStep("usersService.list failed (non-fatal)", err);
+  }
+
+  // If auth exists but DB does not — create DB only
+  if (existingAuthUser) {
+    const rowPayload: UserRow = {
+      accountid: existingAuthUser.$id,
+      email,
+      firstName: payload.firstName,
+      surname: payload.surname,
+      country: payload.country ?? null,
+      location: payload.location ?? null,
+      role: payload.role ?? "user",
+      status: payload.status ?? "Active",
+      nationalId: payload.nationalId ?? null,
+      bio: payload.bio ?? null,
+      metadata: payload.metadata ?? [],
+      dateOfBirth: payload.dateOfBirth ?? null,
+      phone: payload.phone ?? null,
+      agentId: ID.unique(),
+    };
+
+    const row = await tablesDB.createRow(
+      DB_ID,
+      USERS_TABLE,
+      ID.unique(),
+      rowPayload,
+      [
+        Permission.read(Role.user(existingAuthUser.$id)),
+        Permission.update(Role.user(existingAuthUser.$id)),
+        Permission.delete(Role.user(existingAuthUser.$id)),
+      ]
+    );
+
+    return { authUser: existingAuthUser, profile: safeFormat(row) };
+  }
+
+  // Create Appwrite user
   let authUser: any;
   try {
     authUser = await accounts.create(
       ID.unique(),
-      payload.email,
-      payload.password, // raw password, Appwrite hashes internally
+      email,
+      payload.password,
       `${payload.firstName} ${payload.surname}`
     );
-    logStep("Auth user created", authUser);
+  } catch (err: any) {
+    logError("accounts.create FAILED", err, { email });
 
-    // NOTE: accounts.updatePhone requires an authenticated session for the account.
-    // Attempting to call updatePhone immediately after create (without a session)
-    // will often fail. We avoid calling accounts.updatePhone here to prevent 500s.
-    // Instead, store phone in the DB rowPayload (below) and let the user update
-    // phone via a proper authenticated flow if needed.
-  } catch (err) {
-    logError("accounts.create FAILED", err, { email: payload.email });
+    const msg = (err.message ?? "").toLowerCase();
+    if (msg.includes("exists") || msg.includes("same id")) {
+      const conflict = new Error(
+        "A user with the same id, email, or phone already exists."
+      );
+      (conflict as any).status = 409;
+      throw conflict;
+    }
     throw err;
   }
 
-  // 2. Build DB row payload (no password hash stored)
+  // Create DB profile
   const rowPayload: UserRow = {
     accountid: authUser.$id,
-    email: payload.email.toLowerCase(),
+    email,
     firstName: payload.firstName,
     surname: payload.surname,
     country: payload.country ?? null,
@@ -140,64 +192,41 @@ export async function signupUser(payload: {
     status: payload.status ?? "Active",
     nationalId: payload.nationalId ?? null,
     bio: payload.bio ?? null,
-    metadata: Array.isArray(payload.metadata) ? [...payload.metadata] : [],
+    metadata: payload.metadata ?? [],
     dateOfBirth: payload.dateOfBirth ?? null,
     phone: payload.phone ?? null,
     agentId: ID.unique(),
   };
 
-  logStep("Prepared DB rowPayload", rowPayload);
-
-  // 3. Save profile in DB with permissions
-  let row: any;
-  const rowId = ID.unique();
   try {
-    row = await tablesDB.createRow(DB_ID, USERS_TABLE, rowId, rowPayload, [
-      Permission.read(Role.user(authUser.$id)),
-      Permission.update(Role.user(authUser.$id)),
-      Permission.delete(Role.user(authUser.$id)),
-    ]);
-    logStep("Profile row created successfully", row);
+    const row = await tablesDB.createRow(
+      DB_ID,
+      USERS_TABLE,
+      ID.unique(),
+      rowPayload,
+      [
+        Permission.read(Role.user(authUser.$id)),
+        Permission.update(Role.user(authUser.$id)),
+        Permission.delete(Role.user(authUser.$id)),
+      ]
+    );
+
+    return { authUser, profile: safeFormat(row) };
   } catch (err) {
     logError("tablesDB.createRow FAILED", err, { rowPayload });
 
-    // rollback auth user: delete the created user using Users service (admin)
     try {
-      if (authUser && authUser.$id) {
-        await usersService.delete(authUser.$id);
-        logStep("Rolled back auth user (deleted)", authUser.$id);
-      }
-    } catch (deleteErr) {
-      // log but don't mask original error
-      logError("usersService.delete FAILED during rollback", deleteErr, {
-        authUserId: authUser?.$id,
-      });
+      await usersService.delete(authUser.$id);
+    } catch {
+      logError("Rollback deleteAuthUser FAILED", err);
     }
 
     throw err;
   }
-
-  // Delete session after signup (optional). Use "current" to remove current session.
-  try {
-    await accounts.deleteSession("current");
-  } catch (e) {
-    // ignore; not critical
-    logStep(
-      "accounts.deleteSession('current') ignored",
-      (e as any)?.message ?? e
-    );
-  }
-
-  return { authUser, profile: safeFormat(row) };
-}
-
-// Helper wrapper
-export async function createUser(payload: Parameters<typeof signupUser>[0]) {
-  return signupUser(payload);
 }
 
 // ----------------------------
-// GET / UPDATE / DELETE USERS
+// GETTERS / UPDATE / DELETE
 // ----------------------------
 export async function getUserById(userId: string) {
   try {
@@ -238,7 +267,7 @@ export async function updateUser(
   updates: Record<string, unknown>
 ) {
   try {
-    if ("password" in updates) delete (updates as any).password;
+    delete (updates as any).password;
     const row = await tablesDB.updateRow(DB_ID, USERS_TABLE, userId, updates);
     return safeFormat(row);
   } catch (err) {
