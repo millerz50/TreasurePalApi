@@ -33,7 +33,6 @@ let _client: Client | null = null;
 function getClient(): Client {
   if (_client) return _client;
 
-  // create client using environment variables (read at runtime)
   const endpoint = requireEnv("APPWRITE_ENDPOINT");
   const project = requireEnv("APPWRITE_PROJECT_ID");
   const apiKey = requireEnv("APPWRITE_API_KEY");
@@ -42,10 +41,10 @@ function getClient(): Client {
     .setEndpoint(endpoint)
     .setProject(project)
     .setKey(apiKey);
+
   return _client;
 }
 
-/* create Appwrite services lazily */
 function getTablesDB(): TablesDB {
   return new TablesDB(getClient());
 }
@@ -56,15 +55,11 @@ function getUsersService() {
   return new sdk.Users(getClient());
 }
 
-/* get DB config at runtime */
 const DB_ID = getEnv("APPWRITE_DATABASE_ID") ?? "";
 const USERS_TABLE = getEnv("APPWRITE_USERTABLE_ID") || "user";
 const DEBUG = getEnv("DEBUG") === "true";
 
-/* Validate minimal config at runtime */
 if (!DB_ID) {
-  // will throw only when functions attempt DB ops; keep here for early feedback
-  // but don't crash on import in environments where DB isn't required immediately
   console.warn("Warning: APPWRITE_DATABASE_ID is not set.");
 }
 
@@ -119,7 +114,6 @@ function logError(
       })
     );
   } catch {
-    // fallback
     console.error("logError failed", operation, err, context);
   }
 }
@@ -160,7 +154,6 @@ export async function signupUser(payload: {
       throw err;
     }
   } catch (err) {
-    // If DB is misconfigured, surface the error
     if ((err as any).status === 409) throw err;
     logStep("findByEmail error (continuing)", err);
   }
@@ -181,18 +174,14 @@ export async function signupUser(payload: {
     throw err;
   }
 
-  // 2. Phone Verification Flow (optional)
+  // 2. Phone number setup (Admin mode, no session required)
   if (payload.phone) {
     try {
-      await accounts.createEmailPasswordSession(
-        normalizedEmail,
-        payload.password
-      );
-      logStep("Temporary session created");
+      // Set phone number in Users API (no login needed)
+      await usersService.updatePhone(authUser.$id, payload.phone);
+      logStep("Phone set successfully");
 
-      await accounts.updatePhone(payload.phone, payload.password);
-      logStep("Phone set. Sending OTP…");
-
+      // Send OTP
       const token = await accounts.createPhoneToken(
         authUser.$id,
         payload.phone
@@ -200,37 +189,25 @@ export async function signupUser(payload: {
       logStep("OTP sent", token);
 
       if (!payload.otp) {
-        // return pending status so frontend can prompt OTP entry
         return {
           status: "PENDING_PHONE_VERIFICATION",
-          message: "OTP sent to phone. Supply `otp` field to verify.",
+          message: "OTP sent to phone. Supply `otp` to verify.",
           userId: authUser.$id,
         };
       }
 
-      // if otp present, verify
-      await accounts.updatePhoneSession(authUser.$id, payload.otp);
+      // Verify OTP
+      await accounts.updatePhoneVerification(authUser.$id, payload.otp);
       logStep("Phone verification successful");
-
-      // cleanup session
-      try {
-        await accounts.deleteSession("current");
-      } catch {
-        /* ignore */
-      }
     } catch (err) {
       logError("PHONE_VERIFICATION_FAILED", err, {
         phone: payload.phone,
         email: normalizedEmail,
       });
 
-      // rollback auth user on phone verification error
       try {
         await usersService.delete(authUser.$id);
-        logStep(
-          "Rollback: deleted auth user after phone failure",
-          authUser.$id
-        );
+        logStep("Rollback: deleted auth user", authUser.$id);
       } catch (rollbackErr) {
         logError("Rollback FAILED", rollbackErr, { authUserId: authUser.$id });
       }
@@ -239,26 +216,24 @@ export async function signupUser(payload: {
     }
   }
 
-  // 3. Send email verification link (safe)
+  // 3. Email verification link
   try {
     const redirectUrl = getEnv("EMAIL_VERIFY_REDIRECT");
-    if (!redirectUrl) {
-      // do not throw — keep signup working; just log
-      logError(
-        "EMAIL_VERIFICATION_SKIPPED",
-        "EMAIL_VERIFY_REDIRECT not configured",
-        {}
-      );
-    } else {
+    if (redirectUrl) {
       await accounts.createVerification(redirectUrl);
       logStep("Email verification sent");
+    } else {
+      logError(
+        "EMAIL_VERIFICATION_SKIPPED",
+        "EMAIL_VERIFY_REDIRECT not set",
+        {}
+      );
     }
   } catch (err) {
     logError("EMAIL_VERIFICATION_FAILED", err, {});
-    // we proceed — do not block signup if email verification fails
   }
 
-  // 4. Create Database Profile
+  // 4. Create DB Profile
   const rowPayload: UserRow = {
     accountid: authUser.$id,
     email: normalizedEmail,
@@ -275,10 +250,8 @@ export async function signupUser(payload: {
     agentId: ID.unique(),
   };
 
-  // create DB row
   let row: any;
   try {
-    if (!DB_ID) throw new Error("APPWRITE_DATABASE_ID is not configured");
     row = await tablesDB.createRow(
       DB_ID,
       USERS_TABLE,
@@ -293,21 +266,21 @@ export async function signupUser(payload: {
     logStep("Profile row created", row);
   } catch (err) {
     logError("tablesDB.createRow FAILED", err, { rowPayload });
-    // rollback auth user to avoid orphaned auth accounts
+
     try {
       await usersService.delete(authUser.$id);
-      logStep("Rollback: deleted Appwrite auth user", authUser.$id);
+      logStep("Rollback: deleted auth user", authUser.$id);
     } catch (rollbackErr) {
       logError("Rollback FAILED", rollbackErr, { authUserId: authUser.$id });
     }
+
     throw err;
   }
 
-  // FINAL RESPONSE
   return {
     status: "SUCCESS",
-    userId: authUser.$id, // Auth ID (Option A)
-    profileId: row.$id, // DB Row ID
+    userId: authUser.$id,
+    profileId: row.$id,
     authUser,
     profile: safeFormat(row),
   };
