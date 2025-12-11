@@ -29,7 +29,6 @@ if (!DB_ID || !USERS_TABLE) {
     `❌ Missing Appwrite config: DB_ID=${DB_ID}, USERS_TABLE=${USERS_TABLE}`
   );
 }
-
 // ----------------------------
 // HELPERS
 // ----------------------------
@@ -80,6 +79,7 @@ function logError(
     })
   );
 }
+
 // ----------------------------
 // SIGNUP USER (MAIN FUNCTION)
 // ----------------------------
@@ -116,17 +116,29 @@ export async function signupUser(payload: {
     authUser = await accounts.create(
       ID.unique(),
       normalizedEmail,
-      payload.password, // stored ONLY inside Appwrite Auth (hashed)
+      payload.password,
       `${payload.firstName} ${payload.surname}`
     );
 
     logStep("Auth user created", authUser);
 
-    // Store phone NUMBER inside Appwrite Auth
+    // 2. Store phone NUMBER inside Appwrite Auth (requires session)
     if (payload.phone) {
       try {
+        // (A) create a temporary session
+        await accounts.createEmailPasswordSession(
+          normalizedEmail,
+          payload.password
+        );
+        logStep("Temporary session created");
+
+        // (B) update phone (this now WORKS)
         await accounts.updatePhone(payload.phone, payload.password);
         logStep("Phone updated in Appwrite", payload.phone);
+
+        // (C) delete session
+        await accounts.deleteSession("current");
+        logStep("Temporary session removed");
       } catch (err) {
         logError("accounts.updatePhone FAILED", err, {
           phone: payload.phone,
@@ -139,7 +151,7 @@ export async function signupUser(payload: {
     throw err;
   }
 
-  // 2. Build DB row payload (NO PASSWORD, NO PHONE)
+  // 3. Build DB row payload (NO PASSWORD, NO PHONE)
   const rowPayload: UserRow = {
     accountid: authUser.$id,
     email: normalizedEmail,
@@ -153,13 +165,12 @@ export async function signupUser(payload: {
     bio: payload.bio ?? null,
     metadata: Array.isArray(payload.metadata) ? [...payload.metadata] : [],
     dateOfBirth: payload.dateOfBirth ?? null,
-    // phone removed from DB — stored ONLY in auth
     agentId: ID.unique(),
   };
 
   logStep("Prepared DB rowPayload", rowPayload);
 
-  // 3. Save DB Profile
+  // 4. Save DB Profile
   const rowId = ID.unique();
   let row;
 
@@ -184,11 +195,6 @@ export async function signupUser(payload: {
 
     throw err;
   }
-
-  // delete session after signup (optional)
-  try {
-    await accounts.deleteSession("current");
-  } catch {}
 
   return { authUser, profile: safeFormat(row) };
 }
