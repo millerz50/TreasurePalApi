@@ -8,31 +8,38 @@ import sdk, {
   TablesDB,
 } from "node-appwrite";
 
-// ----------------------------
-// INIT APPWRITE CLIENT
-// ----------------------------
-const client = new Client()
-  .setEndpoint(process.env.APPWRITE_ENDPOINT!)
-  .setProject(process.env.APPWRITE_PROJECT_ID!)
-  .setKey(process.env.APPWRITE_API_KEY!);
+/* ============================================================
+   LAZY ENV LOADING (Render-compatible)
+   ============================================================ */
+function env(key: string): string {
+  const v = process.env[key];
+  if (!v) throw new Error(`❌ Missing env: ${key}`);
+  return v;
+}
 
+/* ============================================================
+   CREATE CLIENT (after env is available)
+   ============================================================ */
+function createClient() {
+  const client = new Client()
+    .setEndpoint(env("APPWRITE_ENDPOINT"))
+    .setProject(env("APPWRITE_PROJECT_ID"))
+    .setKey(env("APPWRITE_API_KEY"));
+  return client;
+}
+
+const client = createClient();
 export const tablesDB = new TablesDB(client);
 const accounts = new sdk.Account(client);
 const usersService = new sdk.Users(client);
 
-const DB_ID = process.env.APPWRITE_DATABASE_ID!;
+const DB_ID = env("APPWRITE_DATABASE_ID");
 const USERS_TABLE = process.env.APPWRITE_USERTABLE_ID || "user";
 const DEBUG = process.env.DEBUG === "true";
 
-if (!DB_ID || !USERS_TABLE) {
-  throw new Error(
-    `❌ Missing Appwrite config: DB_ID=${DB_ID}, USERS_TABLE=${USERS_TABLE}`
-  );
-}
-
-// ----------------------------
-// HELPERS
-// ----------------------------
+/* ============================================================
+   HELPERS
+   ============================================================ */
 export interface UserRow {
   $id?: string;
   accountid?: string;
@@ -81,9 +88,9 @@ function logError(
   );
 }
 
-// ----------------------------
-// SIGNUP USER
-// ----------------------------
+/* ============================================================
+   SIGNUP USER
+   ============================================================ */
 export async function signupUser(payload: {
   email: string;
   password: string;
@@ -104,7 +111,7 @@ export async function signupUser(payload: {
 
   const normalizedEmail = payload.email.toLowerCase().trim();
 
-  // 0. Check if DB user already exists
+  // Check duplicates
   const existingUser = await findByEmail(normalizedEmail);
   if (existingUser) {
     const err = new Error("User already exists with this email.");
@@ -112,7 +119,7 @@ export async function signupUser(payload: {
     throw err;
   }
 
-  // 1. Create Appwrite user in Auth
+  // Create auth user
   let authUser;
   try {
     authUser = await accounts.create(
@@ -121,14 +128,15 @@ export async function signupUser(payload: {
       payload.password,
       `${payload.firstName} ${payload.surname}`
     );
-
     logStep("Auth user created", authUser);
   } catch (err: any) {
     logError("accounts.create FAILED", err, { email: normalizedEmail });
     throw err;
   }
 
-  // 2. Phone Verification Flow
+  /* ============================================================
+     PHONE VERIFICATION
+     ============================================================ */
   if (payload.phone) {
     try {
       await accounts.createEmailPasswordSession(
@@ -144,6 +152,7 @@ export async function signupUser(payload: {
         authUser.$id,
         payload.phone
       );
+
       logStep("OTP sent", token);
 
       if (!payload.otp) {
@@ -164,23 +173,24 @@ export async function signupUser(payload: {
         phone: payload.phone,
         email: normalizedEmail,
       });
-      throw new Error("Phone verification failed. Wrong OTP?");
+      throw new Error("Phone verification failed. Incorrect OTP.");
     }
   }
 
-  // 3. Send email verification link (REQUIRES URL)
+  /* ============================================================
+     EMAIL VERIFICATION (with required URL)
+     ============================================================ */
   try {
-    const url = process.env.EMAIL_VERIFY_REDIRECT!;
-    if (!url) throw new Error("EMAIL_VERIFY_REDIRECT missing");
-
+    const url = env("EMAIL_VERIFY_REDIRECT");
     await accounts.createVerification(url);
-
     logStep("Email verification sent");
   } catch (err) {
     logError("EMAIL_VERIFICATION_FAILED", err, {});
   }
 
-  // 4. Create Database Profile
+  /* ============================================================
+     CREATE USER PROFILE IN DATABASE
+     ============================================================ */
   const rowPayload: UserRow = {
     accountid: authUser.$id,
     email: normalizedEmail,
@@ -212,26 +222,18 @@ export async function signupUser(payload: {
     throw err;
   }
 
-  // FINAL RESPONSE
   return {
     status: "SUCCESS",
-    userId: authUser.$id, // Auth ID (Option A)
-    profileId: row.$id, // DB Row ID
+    userId: authUser.$id,
+    profileId: row.$id,
     authUser,
     profile: safeFormat(row),
   };
 }
 
-// ----------------------------
-// COMPATIBILITY
-// ----------------------------
-export async function createUser(payload: Parameters<typeof signupUser>[0]) {
-  return signupUser(payload);
-}
-
-// ----------------------------
-// GETTERS
-// ----------------------------
+/* ============================================================
+   GETTERS
+   ============================================================ */
 export async function getUserById(userId: string) {
   try {
     const row = await tablesDB.getRow(DB_ID, USERS_TABLE, userId);
@@ -254,9 +256,9 @@ export async function getUserByAccountId(accountid: string) {
   }
 }
 
-// ----------------------------
-// LIST USERS
-// ----------------------------
+/* ============================================================
+   LIST USERS / AGENTS
+   ============================================================ */
 export async function listUsers(limit = 100, offset = 0) {
   try {
     const res = await tablesDB.listRows(DB_ID, USERS_TABLE, [], String(limit));
@@ -271,9 +273,28 @@ export async function listUsers(limit = 100, offset = 0) {
   }
 }
 
-// ----------------------------
-// UPDATE / DELETE
-// ----------------------------
+export async function listAgents(limit = 100, offset = 0) {
+  try {
+    const res = await tablesDB.listRows(
+      DB_ID,
+      USERS_TABLE,
+      [Query.equal("role", "agent")],
+      String(limit)
+    );
+    const rows = Array.isArray(res.rows) ? res.rows : [];
+    return {
+      total: res.total ?? rows.length,
+      agents: rows.slice(offset, offset + limit).map(safeFormat),
+    };
+  } catch (err) {
+    logError("listAgents", err, { limit, offset });
+    return { total: 0, agents: [] };
+  }
+}
+
+/* ============================================================
+   UPDATES
+   ============================================================ */
 export async function updateUser(
   userId: string,
   updates: Record<string, unknown>
@@ -298,34 +319,9 @@ export async function deleteUser(userId: string) {
   }
 }
 
-// ----------------------------
-// ROLE & STATUS
-// ----------------------------
-export async function setRole(userId: string, role: string) {
-  try {
-    const row = await tablesDB.updateRow(DB_ID, USERS_TABLE, userId, { role });
-    return safeFormat(row);
-  } catch (err) {
-    logError("setRole", err, { userId, role });
-    throw err;
-  }
-}
-
-export async function setStatus(userId: string, status: string) {
-  try {
-    const row = await tablesDB.updateRow(DB_ID, USERS_TABLE, userId, {
-      status,
-    });
-    return safeFormat(row);
-  } catch (err) {
-    logError("setStatus", err, { userId, status });
-    throw err;
-  }
-}
-
-// ----------------------------
-// FIND BY EMAIL
-// ----------------------------
+/* ============================================================
+   SEARCH
+   ============================================================ */
 export async function findByEmail(email: string) {
   try {
     const res = await tablesDB.listRows(DB_ID, USERS_TABLE, [
@@ -335,27 +331,5 @@ export async function findByEmail(email: string) {
   } catch (err) {
     logError("findByEmail", err, { email });
     return null;
-  }
-}
-
-// ----------------------------
-// AGENT LIST
-// ----------------------------
-export async function listAgents(limit = 100, offset = 0) {
-  try {
-    const res = await tablesDB.listRows(
-      DB_ID,
-      USERS_TABLE,
-      [Query.equal("role", "agent")],
-      String(limit)
-    );
-    const rows = Array.isArray(res.rows) ? res.rows : [];
-    return {
-      total: res.total ?? rows.length,
-      agents: rows.slice(offset, offset + limit).map(safeFormat),
-    };
-  } catch (err) {
-    logError("listAgents", err, { limit, offset });
-    return { total: 0, agents: [] };
   }
 }
