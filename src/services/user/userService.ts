@@ -109,13 +109,12 @@ function logError(operation: string, err: unknown, ctx: any = {}) {
 }
 
 /* ------------------------------------------
-    SIGNUP USER (Backend)
+    SIGNUP USER (Backend – Profile Only)
 ------------------------------------------- */
 
 export async function signupUser(payload: {
-  accountId: string; // <-- passed from frontend!
+  accountId: string; // <-- from frontend Account.create()
   email: string;
-  password: string;
   firstName: string;
   surname: string;
   country?: string;
@@ -127,64 +126,23 @@ export async function signupUser(payload: {
   metadata?: any[];
   dateOfBirth?: string;
   phone?: string | null;
-  otp?: string;
 }) {
-  logStep("START signupUser");
+  logStep("START signupUser (PROFILE ONLY)");
 
   const normalizedEmail = payload.email.toLowerCase().trim();
   const tablesDB = getTablesDB();
-  const accounts = getAccounts();
-  const usersService = getUsersService();
 
-  const authUserId = payload.accountId; // <-- IMPORTANT
-
-  /* 0. Check if DB profile exists */
-  try {
-    const existing = await findByEmail(normalizedEmail);
-    if (existing) {
-      const err: any = new Error("User already exists with this email.");
-      err.status = 409;
-      throw err;
-    }
-  } catch (err: any) {
-    if (err.status === 409) throw err;
-    logStep("findByEmail error safe-continuing", err);
+  /* 0. Prevent duplicate profiles */
+  const existing = await findByEmail(normalizedEmail).catch(() => null);
+  if (existing) {
+    const err: any = new Error("User already exists with this email.");
+    err.status = 409;
+    throw err;
   }
 
-  /* 1. DO NOT create auth user here
-        (Frontend already created it)
-  */
-
-  /* 2. Phone verification */
-  if (payload.phone) {
-    try {
-      await usersService.updatePhone(authUserId, payload.phone);
-      logStep("Phone updated");
-
-      const token = await accounts.createPhoneToken(authUserId, payload.phone);
-
-      logStep("OTP sent", token);
-
-      if (!payload.otp) {
-        return {
-          status: "PENDING_PHONE_VERIFICATION",
-          message: "OTP sent. Provide `otp` to continue signup.",
-          userId: authUserId,
-        };
-      }
-
-      await accounts.updatePhoneVerification(authUserId, payload.otp);
-      logStep("Phone verification success");
-    } catch (err) {
-      logError("PHONE_VERIFY_FAIL", err, { phone: payload.phone });
-
-      throw new Error("Phone verification failed. Wrong OTP?");
-    }
-  }
-
-  /* 3. DB Profile Creation */
+  /* 1. Build DB profile payload */
   const rowPayload: UserRow = {
-    accountid: authUserId,
+    accountid: payload.accountId,
     email: normalizedEmail,
     firstName: payload.firstName,
     surname: payload.surname,
@@ -200,36 +158,30 @@ export async function signupUser(payload: {
     agentId: ID.unique(),
   };
 
-  let row: any;
+  /* 2. Insert DB profile */
+  const row = await tablesDB.createRow(
+    DB_ID,
+    USERS_TABLE,
+    ID.unique(),
+    rowPayload,
+    [
+      Permission.read(Role.user(payload.accountId)),
+      Permission.update(Role.user(payload.accountId)),
+      Permission.delete(Role.user(payload.accountId)),
+    ]
+  );
 
-  try {
-    row = await tablesDB.createRow(
-      DB_ID,
-      USERS_TABLE,
-      ID.unique(),
-      rowPayload,
-      [
-        Permission.read(Role.user(authUserId)),
-        Permission.update(Role.user(authUserId)),
-        Permission.delete(Role.user(authUserId)),
-      ]
-    );
-  } catch (err) {
-    logError("DB_CREATE_FAIL", err, { rowPayload });
-    throw err;
-  }
-
+  /* 3. Return success */
   return {
     status: "SUCCESS",
-    userId: authUserId,
+    userId: payload.accountId,
     profileId: row.$id,
     profile: safeFormat(row),
   };
 }
 
-/* Compatibility */
-export async function createUser(payload: Parameters<typeof signupUser>[0]) {
-  return signupUser(payload);
+export async function createUser(p: Parameters<typeof signupUser>[0]) {
+  return signupUser(p);
 }
 
 /* ------------------------------------------
