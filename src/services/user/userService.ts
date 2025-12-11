@@ -128,24 +128,24 @@ export async function signupUser(payload: {
   const tablesDB = getTablesDB();
   const normalizedEmail = payload.email.toLowerCase().trim();
 
-  /* Prevent duplicate profiles */
+  // Prevent duplicate profiles
   const existing = await findByEmail(normalizedEmail).catch(() => null);
   if (existing) {
-    const err: any = new Error("User already exists with this email.");
-    err.status = 409;
-    throw err;
+    const error = new Error("User already exists with this email.");
+    (error as any).status = 409;
+    throw error;
   }
 
-  /* Build row payload */
+  // Build row payload
   const rowPayload: UserRow = {
-    accountid: payload.accountId,
+    accountId: payload.accountId, // ✅ keep casing consistent
     email: normalizedEmail,
     firstName: payload.firstName,
     surname: payload.surname,
     country: payload.country ?? null,
     location: payload.location ?? null,
     role: payload.role ?? "user",
-    status: payload.status ?? "Active",
+    status: payload.status ?? "Pending", // ✅ match frontend default
     nationalId: payload.nationalId ?? null,
     bio: payload.bio ?? null,
     metadata: Array.isArray(payload.metadata) ? payload.metadata : [],
@@ -154,7 +154,7 @@ export async function signupUser(payload: {
     agentId: ID.unique(),
   };
 
-  /* Insert DB row */
+  // Insert DB row
   const row = await tablesDB.createRow(
     DB_ID,
     USERS_TABLE,
