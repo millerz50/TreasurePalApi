@@ -80,7 +80,6 @@ function logError(
     })
   );
 }
-
 // ----------------------------
 // SIGNUP USER (MAIN FUNCTION)
 // ----------------------------
@@ -117,11 +116,13 @@ export async function signupUser(payload: {
     authUser = await accounts.create(
       ID.unique(),
       normalizedEmail,
-      payload.password,
+      payload.password, // stored ONLY inside Appwrite Auth (hashed)
       `${payload.firstName} ${payload.surname}`
     );
+
     logStep("Auth user created", authUser);
 
+    // Store phone NUMBER inside Appwrite Auth
     if (payload.phone) {
       try {
         await accounts.updatePhone(payload.phone, payload.password);
@@ -138,7 +139,7 @@ export async function signupUser(payload: {
     throw err;
   }
 
-  // 2. Build DB row payload
+  // 2. Build DB row payload (NO PASSWORD, NO PHONE)
   const rowPayload: UserRow = {
     accountid: authUser.$id,
     email: normalizedEmail,
@@ -152,26 +153,28 @@ export async function signupUser(payload: {
     bio: payload.bio ?? null,
     metadata: Array.isArray(payload.metadata) ? [...payload.metadata] : [],
     dateOfBirth: payload.dateOfBirth ?? null,
-    phone: payload.phone ?? null,
+    // phone removed from DB — stored ONLY in auth
     agentId: ID.unique(),
   };
 
   logStep("Prepared DB rowPayload", rowPayload);
 
-  // 3. Create DB row with correct permissions
+  // 3. Save DB Profile
   const rowId = ID.unique();
   let row;
+
   try {
     row = await tablesDB.createRow(DB_ID, USERS_TABLE, rowId, rowPayload, [
       Permission.read(Role.user(authUser.$id)),
       Permission.update(Role.user(authUser.$id)),
       Permission.delete(Role.user(authUser.$id)),
     ]);
+
     logStep("Profile row created successfully", row);
   } catch (err) {
     logError("tablesDB.createRow FAILED", err, { rowPayload });
 
-    // ❗ FIXED: Proper rollback (delete auth user)
+    // rollback auth user
     try {
       await usersService.delete(authUser.$id);
       logStep("Rollback: deleted Appwrite auth user", authUser.$id);
@@ -182,7 +185,7 @@ export async function signupUser(payload: {
     throw err;
   }
 
-  // Optional session cleanup
+  // delete session after signup (optional)
   try {
     await accounts.deleteSession("current");
   } catch {}
