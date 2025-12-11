@@ -1,12 +1,6 @@
+/* lib/users.ts */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import sdk, {
-  Client,
-  ID,
-  Permission,
-  Query,
-  Role,
-  TablesDB,
-} from "node-appwrite";
+import { Client, ID, Permission, Query, Role, TablesDB } from "node-appwrite";
 
 /* ------------------------------------------
     ENV + CLIENT
@@ -40,14 +34,6 @@ function getTablesDB(): TablesDB {
   return new TablesDB(getClient());
 }
 
-function getAccounts() {
-  return new sdk.Account(getClient());
-}
-
-function getUsersService() {
-  return new sdk.Users(getClient());
-}
-
 /* ------------------------------------------
     CONSTANTS
 ------------------------------------------- */
@@ -64,7 +50,7 @@ if (!DB_ID) console.warn("Warning: APPWRITE_DATABASE_ID missing");
 
 export interface UserRow {
   $id?: string;
-  accountid?: string;
+  accountid?: string; // stored column name in DB
   email?: string;
   firstName?: string;
   surname?: string;
@@ -81,11 +67,12 @@ export interface UserRow {
   [key: string]: any;
 }
 
-function safeFormat(row: unknown): UserRow | null {
+function safeFormat(row: any): UserRow | null {
   if (!row || typeof row !== "object") return null;
-  const f = { ...(row as UserRow) };
-  delete (f as any).password;
-  return f;
+  const f: any = { ...(row as Record<string, any>) };
+  // remove sensitive fields if present
+  if ("password" in f) delete f.password;
+  return f as UserRow;
 }
 
 function logStep(step: string, data?: any) {
@@ -105,7 +92,7 @@ function logError(operation: string, err: unknown, ctx: any = {}) {
 }
 
 /* ------------------------------------------
-    SIGNUP USER – CREATE PROFILE ONLY
+    CORE: signupUser (create profile row)
 ------------------------------------------- */
 
 export async function signupUser(payload: {
@@ -123,7 +110,10 @@ export async function signupUser(payload: {
   dateOfBirth?: string;
   phone?: string | null;
 }) {
-  logStep("START signupUser");
+  logStep("START signupUser", {
+    accountId: payload.accountId,
+    email: payload.email,
+  });
 
   const tablesDB = getTablesDB();
   const normalizedEmail = payload.email.toLowerCase().trim();
@@ -136,16 +126,16 @@ export async function signupUser(payload: {
     throw error;
   }
 
-  // Build row payload
-  const rowPayload: UserRow = {
-    accountId: payload.accountId, // ✅ keep casing consistent
+  const rowPayload: Record<string, any> = {
+    // store as lowercase DB column name `accountid`
+    accountid: payload.accountId,
     email: normalizedEmail,
     firstName: payload.firstName,
     surname: payload.surname,
     country: payload.country ?? null,
     location: payload.location ?? null,
     role: payload.role ?? "user",
-    status: payload.status ?? "Pending", // ✅ match frontend default
+    status: payload.status ?? "Pending",
     nationalId: payload.nationalId ?? null,
     bio: payload.bio ?? null,
     metadata: Array.isArray(payload.metadata) ? payload.metadata : [],
@@ -154,25 +144,31 @@ export async function signupUser(payload: {
     agentId: ID.unique(),
   };
 
-  // Insert DB row
-  const row = await tablesDB.createRow(
-    DB_ID,
-    USERS_TABLE,
-    ID.unique(),
-    rowPayload,
-    [
-      Permission.read(Role.user(payload.accountId)),
-      Permission.update(Role.user(payload.accountId)),
-      Permission.delete(Role.user(payload.accountId)),
-    ]
-  );
+  try {
+    const row = await tablesDB.createRow(
+      DB_ID,
+      USERS_TABLE,
+      ID.unique(),
+      rowPayload,
+      [
+        Permission.read(Role.user(payload.accountId)),
+        Permission.update(Role.user(payload.accountId)),
+        Permission.delete(Role.user(payload.accountId)),
+      ]
+    );
 
-  return {
-    status: "SUCCESS",
-    userId: payload.accountId,
-    profileId: row.$id,
-    profile: safeFormat(row),
-  };
+    return {
+      status: "SUCCESS",
+      userId: payload.accountId,
+      profileId: row.$id,
+      profile: safeFormat(row),
+    };
+  } catch (err) {
+    logError("signupUser.createRow", err, {
+      payload: { accountId: payload.accountId, email: normalizedEmail },
+    });
+    throw err;
+  }
 }
 
 export async function createUser(p: Parameters<typeof signupUser>[0]) {
