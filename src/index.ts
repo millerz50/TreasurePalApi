@@ -21,7 +21,6 @@ import activityRouter from "./routes/activity";
 import agentsRoutes from "./routes/agentRoutes";
 import blogRoutes from "./routes/blogsRoutes";
 import dashboardRouter from "./routes/dashboard";
-
 import healthRoutes from "./routes/health";
 import propertiesRoutes from "./routes/propertyRoutes";
 import storageRoutes from "./routes/storageRoutes";
@@ -84,7 +83,6 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     if (req.method === "OPTIONS") {
       return res.status(403).send("CORS origin not allowed");
     }
-    // For non-OPTIONS requests, continue so the request can be handled or rejected later
   }
 
   res.setHeader(
@@ -103,7 +101,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
-// Also apply the standard cors middleware for normal requests (keeps behavior consistent)
+// Also apply the standard cors middleware for normal requests
 app.use(
   cors({
     origin: (origin, callback) => {
@@ -189,6 +187,7 @@ app.use("/api/storage", storageRoutes);
 app.use("/api/agents", agentsRoutes);
 app.use("/api/blogs", blogRoutes);
 app.use("/api/health", healthRoutes);
+app.use("/api/activity", activityRouter);
 
 //
 // OAuth Routes
@@ -222,8 +221,6 @@ app.get(
     );
   }
 );
-// Mount API routers before any catch-all 404
-app.use("/api/activity", activityRouter);
 
 //
 // Health-check endpoint
@@ -233,14 +230,16 @@ app.get("/healthz", (_req: Request, res: Response) => {
 });
 
 //
-// Error handler (must be after routes)
+// Error handler
 //
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   const message = err instanceof Error ? err.message : String(err);
   logger.error(`❌ Uncaught error: ${message}`, err);
+
   if (message.startsWith("Not allowed by CORS")) {
     return res.status(403).json({ error: "CORS error", details: message });
   }
+
   res.status(500).json({
     error: "Internal server error",
     details: message,
