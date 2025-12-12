@@ -76,7 +76,6 @@ export interface UserRow {
   dateOfBirth?: string | null;
   agentId?: string | null;
   bio?: string | null;
-  phone?: string | null; // optional (not auth)
   [key: string]: any;
 }
 
