@@ -1,14 +1,6 @@
 /* lib/users.ts */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import {
-  Client,
-  ID,
-  Permission,
-  Query,
-  Role,
-  TablesDB,
-  Users,
-} from "node-appwrite";
+import { Client, ID, Permission, Query, Role, TablesDB } from "node-appwrite";
 
 /* ------------------------------------------
     ENV + CLIENT
@@ -42,10 +34,6 @@ function getTablesDB(): TablesDB {
   return new TablesDB(getClient());
 }
 
-function getUsers(): Users {
-  return new Users(getClient());
-}
-
 /* ------------------------------------------
     CONSTANTS
 ------------------------------------------- */
@@ -62,7 +50,7 @@ if (!DB_ID) console.warn("Warning: APPWRITE_DATABASE_ID missing");
 
 export interface UserRow {
   $id?: string;
-  accountid?: string; // stored column name in DB
+  accountid?: string;
   email?: string;
   firstName?: string;
   surname?: string;
@@ -82,7 +70,6 @@ export interface UserRow {
 function safeFormat(row: any): UserRow | null {
   if (!row || typeof row !== "object") return null;
   const f: any = { ...(row as Record<string, any>) };
-  // remove sensitive fields if present
   if ("password" in f) delete f.password;
   return f as UserRow;
 }
@@ -104,13 +91,13 @@ function logError(operation: string, err: unknown, ctx: any = {}) {
 }
 
 /* ------------------------------------------
-    CORE: signupUser (create auth user + profile row)
+    SIGNUP USER (CREATE ROW ONLY — NO AUTH)
 ------------------------------------------- */
 
 export type SignupPayload = {
-  accountId?: string; // optional: you can let Appwrite generate one
+  accountId?: string;
   email: string;
-  password: string;
+  password: string; // Not sent to DB — controller hashes it
   firstName: string;
   surname: string;
   country?: string;
@@ -127,10 +114,12 @@ export type SignupPayload = {
 export async function signupUser(payload: SignupPayload) {
   logStep("START signupUser", { email: payload.email });
 
+  const tablesDB = getTablesDB();
+
   const normalizedEmail = payload.email.toLowerCase().trim();
   const accountId = payload.accountId ?? ID.unique();
 
-  // 0) Prevent duplicate profiles by email (optional, keep your existing findByEmail)
+  // Prevent duplicates by email
   const existing = await findByEmail(normalizedEmail).catch(() => null);
   if (existing) {
     const error = new Error("User already exists with this email.");
@@ -138,25 +127,7 @@ export async function signupUser(payload: SignupPayload) {
     throw error;
   }
 
-  const users = getUsers();
-  const tablesDB = getTablesDB();
-
-  // 1) Create Appwrite auth user (server-side)
-  try {
-    await users.create(
-      accountId,
-      normalizedEmail,
-      payload.password,
-      `${payload.firstName} ${payload.surname}`
-    );
-    logStep("Auth user created", { userId: accountId, email: normalizedEmail });
-  } catch (err) {
-    logError("signupUser.createAuthUser", err, { email: normalizedEmail });
-    // Appwrite may throw if user exists or invalid input
-    throw err;
-  }
-
-  // 2) Create profile row in Tables DB
+  // Build the row payload
   const rowPayload: Record<string, any> = {
     accountid: accountId,
     email: normalizedEmail,
@@ -165,7 +136,7 @@ export async function signupUser(payload: SignupPayload) {
     country: payload.country ?? null,
     location: payload.location ?? null,
     role: payload.role ?? "user",
-    status: payload.status ?? "Pending",
+    status: payload.status ?? "Active",
     nationalId: payload.nationalId ?? null,
     bio: payload.bio ?? null,
     metadata: Array.isArray(payload.metadata) ? payload.metadata : [],
@@ -174,23 +145,22 @@ export async function signupUser(payload: SignupPayload) {
     agentId: ID.unique(),
   };
 
-  let createdRow: any = null;
   try {
-    createdRow = await tablesDB.createRow(
+    const createdRow = await tablesDB.createRow(
       DB_ID,
       USERS_TABLE,
       ID.unique(),
       rowPayload,
       [
-        Permission.read(Role.user(accountId)),
-        Permission.update(Role.user(accountId)),
-        Permission.delete(Role.user(accountId)),
+        Permission.read(Role.any()), // readable
+        Permission.update(Role.any()),
+        Permission.delete(Role.any()),
       ]
     );
 
-    logStep("Profile row created", {
+    logStep("DB row created", {
       profileId: createdRow.$id,
-      userId: accountId,
+      accountId,
     });
 
     return {
@@ -200,32 +170,14 @@ export async function signupUser(payload: SignupPayload) {
       profile: safeFormat(createdRow),
     };
   } catch (err) {
-    logError("signupUser.createRow", err, {
-      userId: accountId,
-      email: normalizedEmail,
-    });
-
-    // Rollback: delete the auth user we created to avoid orphaned accounts
-    try {
-      await users.delete(accountId);
-      logStep("Rolled back auth user deletion", { userId: accountId });
-    } catch (deleteErr) {
-      logError("signupUser.rollbackDeleteUser", deleteErr, {
-        userId: accountId,
-      });
-      // If deletion fails, surface both errors or at least log them for manual cleanup
-    }
-
+    logError("signupUser.createRow", err, { email: normalizedEmail });
     throw err;
   }
 }
 
 /* ------------------------------------------
-    Compatibility wrapper
-    Export createUser so other modules that import
-    `createUser` continue to work.
+    createUser compatibility wrapper
 ------------------------------------------- */
-
 export async function createUser(p: SignupPayload) {
   return signupUser(p);
 }
@@ -319,7 +271,7 @@ export async function deleteUser(id: string) {
 }
 
 /* ------------------------------------------
-    AGENT HELPERS
+    AGENTS
 ------------------------------------------- */
 
 export async function setRole(id: string, role: string) {

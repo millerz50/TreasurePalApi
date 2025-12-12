@@ -74,34 +74,19 @@ export async function signup(req: Request, res: Response) {
       country,
       location,
       dateOfBirth,
-    } = req.body as {
-      email?: string;
-      password?: string;
-      firstName?: string;
-      surname?: string;
-      role?: string;
-      nationalId?: string;
-      bio?: string | null;
-      country?: string;
-      location?: string;
-      dateOfBirth?: string;
-    };
+    } = req.body;
 
-    // Validate required fields
     if (!email || !password || !firstName || !surname) {
       return res.status(400).json({ error: "Missing required fields" });
     }
     logStep("Signup request received", { email, firstName, surname, role });
 
-    // Check if user already exists
     const exists = await findByEmail(email.toLowerCase());
     if (exists) return res.status(409).json({ error: "User already exists" });
 
-    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
     logStep("Password hashed");
 
-    // Optional avatar upload
     let avatarFileId: string | undefined;
     try {
       const file = (req as any).file as Express.Multer.File | undefined;
@@ -118,11 +103,9 @@ export async function signup(req: Request, res: Response) {
       logError("avatarUpload failed", err, { email });
     }
 
-    // Generate agent ID if role is agent
     const agentId = role === "agent" ? randomUUID() : undefined;
     logStep("Generated agent ID if applicable", { agentId });
 
-    // Build payload for DB-only signup
     const servicePayload = {
       email: email.toLowerCase(),
       password: hashedPassword,
@@ -140,7 +123,6 @@ export async function signup(req: Request, res: Response) {
       accountId: req.body.accountId,
     };
 
-    // Create user in DB
     let user;
     try {
       user = await createUser(servicePayload);
@@ -150,7 +132,6 @@ export async function signup(req: Request, res: Response) {
       return res.status(500).json({ error: "Failed to create user" });
     }
 
-    // Success response (DB-only)
     return res.status(201).json({ profile: user.profile });
   } catch (err) {
     logError("signup handler failed", err);
@@ -175,7 +156,6 @@ export async function getUserProfile(req: Request, res: Response) {
     const profile = await getUserByAccountId(accountId);
     if (!profile) return res.status(404).json({ error: "Profile not found" });
 
-    // Load phone from local JSON
     let phone: string | undefined;
     try {
       const fileContent = await fs.readFile(dbFile, "utf-8");
@@ -286,9 +266,11 @@ export async function setStatus(req: Request, res: Response) {
     const updated = await svcSetStatus(req.params.id, status);
     res.json(updated);
   } catch (err) {
-    res.status(400).json({
-      error: err instanceof Error ? err.message : "Set status failed",
-    });
+    res
+      .status(400)
+      .json({
+        error: err instanceof Error ? err.message : "Set status failed",
+      });
   }
 }
 
@@ -297,8 +279,10 @@ export async function getAgents(_req: Request, res: Response) {
     const agents = await svcListAgents();
     res.json(agents);
   } catch (err) {
-    res.status(500).json({
-      error: err instanceof Error ? err.message : "Failed to fetch agents",
-    });
+    res
+      .status(500)
+      .json({
+        error: err instanceof Error ? err.message : "Failed to fetch agents",
+      });
   }
 }
