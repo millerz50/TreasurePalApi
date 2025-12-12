@@ -17,6 +17,7 @@
     "appwrite": "^21.4.0",
     "axios": "^1.13.2",
     "bcrypt": "^6.0.0",
+    "bcryptjs": "^3.0.3",
     "busboy": "^1.6.0",
     "compression": "^1.8.1",
     "cookie": "^1.0.2",
