@@ -1,6 +1,15 @@
 /* lib/users.ts */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Client, ID, Permission, Query, Role, TablesDB } from "node-appwrite";
+
+import {
+  Account, // <-- IMPORTANT
+  Client,
+  ID,
+  Permission,
+  Query,
+  Role,
+  TablesDB,
+} from "node-appwrite";
 
 /* ------------------------------------------
     ENV + CLIENT
@@ -34,6 +43,10 @@ function getTablesDB(): TablesDB {
   return new TablesDB(getClient());
 }
 
+function getAccount(): Account {
+  return new Account(getClient());
+}
+
 /* ------------------------------------------
     CONSTANTS
 ------------------------------------------- */
@@ -63,6 +76,7 @@ export interface UserRow {
   dateOfBirth?: string | null;
   agentId?: string | null;
   bio?: string | null;
+  phone?: string | null; // optional (not auth)
   [key: string]: any;
 }
 
@@ -90,15 +104,19 @@ function logError(operation: string, err: unknown, ctx: any = {}) {
 }
 
 /* ------------------------------------------
-    SIGNUP USER (CREATE ROW ONLY — NO AUTH)
+    SIGNUP USER (AUTH + DB)
 ------------------------------------------- */
 
 export type SignupPayload = {
   accountId?: string;
   email: string;
-  password: string; // Not sent to DB — controller hashes it
+  password: string;
   firstName: string;
   surname: string;
+
+  // phone is stored ONLY in Auth (not DB)
+  phone?: string;
+
   country?: string;
   location?: string;
   role?: string;
@@ -113,11 +131,14 @@ export async function signupUser(payload: SignupPayload) {
   logStep("START signupUser", { email: payload.email });
 
   const tablesDB = getTablesDB();
+  const account = getAccount();
 
   const normalizedEmail = payload.email.toLowerCase().trim();
+
+  // Generate consistent ID for both Auth + Database
   const accountId = payload.accountId ?? ID.unique();
 
-  // Prevent duplicates by email
+  // Prevent duplicate email
   const existing = await findByEmail(normalizedEmail).catch(() => null);
   if (existing) {
     const error = new Error("User already exists with this email.");
@@ -125,12 +146,35 @@ export async function signupUser(payload: SignupPayload) {
     throw error;
   }
 
-  // Build the row payload
+  /* -----------------------------
+      1️⃣ CREATE USER IN APPWRITE AUTH
+      phone ONLY stored here
+  ------------------------------ */
+  let authUser;
+  try {
+    authUser = await account.create(
+      accountId,
+      normalizedEmail,
+      payload.password,
+      payload.phone || undefined
+    );
+  } catch (err) {
+    logError("signupUser.authCreate", err);
+    throw err;
+  }
+
+  /* -----------------------------
+      2️⃣ SAVE USER PROFILE IN TABLE
+  ------------------------------ */
   const rowPayload: Record<string, any> = {
     accountid: accountId,
     email: normalizedEmail,
     firstName: payload.firstName,
     surname: payload.surname,
+
+    // phone NOT required, but can store if needed
+    phone: payload.phone ?? null,
+
     country: payload.country ?? null,
     location: payload.location ?? null,
     role: payload.role ?? "user",
@@ -142,39 +186,38 @@ export async function signupUser(payload: SignupPayload) {
     agentId: ID.unique(),
   };
 
+  let createdRow;
   try {
-    const createdRow = await tablesDB.createRow(
+    createdRow = await tablesDB.createRow(
       DB_ID,
       USERS_TABLE,
       ID.unique(),
       rowPayload,
       [
-        Permission.read(Role.any()), // readable
+        Permission.read(Role.any()),
         Permission.update(Role.any()),
         Permission.delete(Role.any()),
       ]
     );
-
-    logStep("DB row created", {
-      profileId: createdRow.$id,
-      accountId,
-    });
-
-    return {
-      status: "SUCCESS",
-      userId: accountId,
-      profileId: createdRow.$id,
-      profile: safeFormat(createdRow),
-    };
   } catch (err) {
-    logError("signupUser.createRow", err, { email: normalizedEmail });
+    logError("signupUser.createRow", err);
     throw err;
   }
+
+  /* -----------------------------
+      DONE
+  ------------------------------ */
+
+  return {
+    status: "SUCCESS",
+    userId: accountId,
+    authUser,
+    profileId: createdRow.$id,
+    profile: safeFormat(createdRow),
+  };
 }
 
-/* ------------------------------------------
-    createUser compatibility wrapper
-------------------------------------------- */
+/* Wrapper */
 export async function createUser(p: SignupPayload) {
   return signupUser(p);
 }
