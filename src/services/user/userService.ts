@@ -1,8 +1,9 @@
 /* lib/users.ts */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+import bcrypt from "bcryptjs";
 import {
-  Account, // <-- IMPORTANT
+  Account,
   Client,
   ID,
   Permission,
@@ -58,33 +59,8 @@ const DEBUG = getEnv("DEBUG") === "true";
 if (!DB_ID) console.warn("Warning: APPWRITE_DATABASE_ID missing");
 
 /* ------------------------------------------
-    INTERFACES + UTILS
+    LOG UTILS (ADDED)
 ------------------------------------------- */
-
-export interface UserRow {
-  $id?: string;
-  accountid?: string;
-  email?: string;
-  firstName?: string;
-  surname?: string;
-  role?: string;
-  status?: string;
-  nationalId?: string | null;
-  metadata?: any[];
-  country?: string | null;
-  location?: string | null;
-  dateOfBirth?: string | null;
-  agentId?: string | null;
-  bio?: string | null;
-  [key: string]: any;
-}
-
-function safeFormat(row: any): UserRow | null {
-  if (!row || typeof row !== "object") return null;
-  const f: any = { ...(row as Record<string, any>) };
-  if ("password" in f) delete f.password;
-  return f as UserRow;
-}
 
 function logStep(step: string, data?: any) {
   if (DEBUG) console.log("DEBUG:", step, data ?? "");
@@ -103,6 +79,36 @@ function logError(operation: string, err: unknown, ctx: any = {}) {
 }
 
 /* ------------------------------------------
+    SAFE FORMAT (ADDED)
+------------------------------------------- */
+
+export interface UserRow {
+  $id?: string;
+  accountid?: string;
+  email?: string;
+  firstName?: string;
+  surname?: string;
+  role?: string;
+  status?: string;
+  nationalId?: string | null;
+  metadata?: any[];
+  country?: string | null;
+  location?: string | null;
+  dateOfBirth?: string | null;
+  agentId?: string | null;
+  bio?: string | null;
+  phone?: string | null;
+  password?: string;
+}
+
+function safeFormat(row: any): UserRow | null {
+  if (!row || typeof row !== "object") return null;
+  const f: any = { ...(row as Record<string, any>) };
+  delete f.password; // never expose
+  return f as UserRow;
+}
+
+/* ------------------------------------------
     SIGNUP USER (AUTH + DB)
 ------------------------------------------- */
 
@@ -113,7 +119,7 @@ export type SignupPayload = {
   firstName: string;
   surname: string;
 
-  // phone is stored ONLY in Auth (not DB)
+  // phone NOT saved on signup — saved later on login
   phone?: string;
 
   country?: string;
@@ -133,46 +139,39 @@ export async function signupUser(payload: SignupPayload) {
   const account = getAccount();
 
   const normalizedEmail = payload.email.toLowerCase().trim();
-
-  // Generate consistent ID for both Auth + Database
   const accountId = payload.accountId ?? ID.unique();
 
-  // Prevent duplicate email
+  /* Prevent duplicate */
   const existing = await findByEmail(normalizedEmail).catch(() => null);
   if (existing) {
-    const error = new Error("User already exists with this email.");
-    (error as any).status = 409;
+    const error: any = new Error("User already exists with this email.");
+    error.status = 409;
     throw error;
   }
 
-  /* -----------------------------
-      1️⃣ CREATE USER IN APPWRITE AUTH
-      phone ONLY stored here
-  ------------------------------ */
+  /* 1️⃣ Create user in Appwrite Auth WITHOUT phone */
   let authUser;
   try {
     authUser = await account.create(
       accountId,
       normalizedEmail,
-      payload.password,
-      payload.phone || undefined
+      payload.password
+      // phone intentionally removed
     );
   } catch (err) {
     logError("signupUser.authCreate", err);
     throw err;
   }
 
-  /* -----------------------------
-      2️⃣ SAVE USER PROFILE IN TABLE
-  ------------------------------ */
+  /* 2️⃣ Hash password for DB */
+  const hashedPassword = await bcrypt.hash(payload.password, 10);
+
+  /* 3️⃣ Create DB row (no phone) */
   const rowPayload: Record<string, any> = {
     accountid: accountId,
     email: normalizedEmail,
     firstName: payload.firstName,
     surname: payload.surname,
-
-    // phone NOT required, but can store if needed
-    phone: payload.phone ?? null,
 
     country: payload.country ?? null,
     location: payload.location ?? null,
@@ -182,7 +181,10 @@ export async function signupUser(payload: SignupPayload) {
     bio: payload.bio ?? null,
     metadata: Array.isArray(payload.metadata) ? payload.metadata : [],
     dateOfBirth: payload.dateOfBirth ?? null,
-    agentId: ID.unique(),
+
+    password: hashedPassword,
+
+    agentId: payload.role === "agent" ? ID.unique() : null,
   };
 
   let createdRow;
@@ -203,10 +205,6 @@ export async function signupUser(payload: SignupPayload) {
     throw err;
   }
 
-  /* -----------------------------
-      DONE
-  ------------------------------ */
-
   return {
     status: "SUCCESS",
     userId: accountId,
@@ -214,11 +212,6 @@ export async function signupUser(payload: SignupPayload) {
     profileId: createdRow.$id,
     profile: safeFormat(createdRow),
   };
-}
-
-/* Wrapper */
-export async function createUser(p: SignupPayload) {
-  return signupUser(p);
 }
 
 /* ------------------------------------------
@@ -256,102 +249,5 @@ export async function findByEmail(email: string) {
   } catch (err) {
     logError("findByEmail", err, { email });
     return null;
-  }
-}
-
-/* ------------------------------------------
-    LIST
-------------------------------------------- */
-
-export async function listUsers(limit = 100, offset = 0) {
-  try {
-    const res = await getTablesDB().listRows(
-      DB_ID,
-      USERS_TABLE,
-      [],
-      String(limit)
-    );
-
-    const rows = res.rows ?? [];
-    return {
-      total: res.total ?? rows.length,
-      users: rows.slice(offset, offset + limit).map(safeFormat),
-    };
-  } catch (err) {
-    logError("listUsers", err, { limit, offset });
-    return { total: 0, users: [] };
-  }
-}
-
-/* ------------------------------------------
-    UPDATE / DELETE
-------------------------------------------- */
-
-export async function updateUser(id: string, updates: Record<string, any>) {
-  try {
-    if ("password" in updates) delete updates.password;
-
-    const row = await getTablesDB().updateRow(DB_ID, USERS_TABLE, id, updates);
-
-    return safeFormat(row);
-  } catch (err) {
-    logError("updateUser", err, { id, updates });
-    throw err;
-  }
-}
-
-export async function deleteUser(id: string) {
-  try {
-    return await getTablesDB().deleteRow(DB_ID, USERS_TABLE, id);
-  } catch (err) {
-    logError("deleteUser", err, { id });
-    throw err;
-  }
-}
-
-/* ------------------------------------------
-    AGENTS
-------------------------------------------- */
-
-export async function setRole(id: string, role: string) {
-  try {
-    const row = await getTablesDB().updateRow(DB_ID, USERS_TABLE, id, { role });
-    return safeFormat(row);
-  } catch (err) {
-    logError("setRole", err, { id, role });
-    throw err;
-  }
-}
-
-export async function setStatus(id: string, status: string) {
-  try {
-    const row = await getTablesDB().updateRow(DB_ID, USERS_TABLE, id, {
-      status,
-    });
-    return safeFormat(row);
-  } catch (err) {
-    logError("setStatus", err, { id, status });
-    throw err;
-  }
-}
-
-export async function listAgents(limit = 100, offset = 0) {
-  try {
-    const res = await getTablesDB().listRows(
-      DB_ID,
-      USERS_TABLE,
-      [Query.equal("role", "agent")],
-      String(limit)
-    );
-
-    const rows = res.rows ?? [];
-
-    return {
-      total: res.total ?? rows.length,
-      agents: rows.slice(offset, offset + limit).map(safeFormat),
-    };
-  } catch (err) {
-    logError("listAgents", err, { limit, offset });
-    return { total: 0, agents: [] };
   }
 }
