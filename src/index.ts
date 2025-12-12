@@ -154,6 +154,7 @@ app.use(
 
 /* =======================================================
    SESSION + PASSPORT
+   (Note: MemoryStore is not for production - consider Redis)
 ======================================================= */
 const isProd = process.env.NODE_ENV === "production";
 
@@ -175,7 +176,14 @@ app.use(passport.initialize());
 app.use(passport.session());
 
 /* =======================================================
-   ROUTES
+   ROOT (health) ROUTE - prevents fallthrough to error handler
+======================================================= */
+app.get("/", (_req: Request, res: Response) => {
+  res.status(200).send("TreasurePal API is running");
+});
+
+/* =======================================================
+   API ROUTES
 ======================================================= */
 app.use("/api/properties", propertiesRoutes);
 app.use("/api/dashboard", dashboardRouter);
@@ -227,12 +235,26 @@ app.get("/healthz", (_req, res) => {
 });
 
 /* =======================================================
-   ERROR HANDLER
+   ERROR HANDLER (correct 4-arg signature)
+   - safe: checks headersSent and typeof res.status
 ======================================================= */
-app.use((err: unknown, _req: Request, res: Response) => {
+app.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
   const message = err instanceof Error ? err.message : String(err);
-
   logger.error(`❌ Uncaught error: ${message}`, err);
+
+  // If headers already sent, delegate to the default handler
+  if ((res as any).headersSent) {
+    return next(err);
+  }
+
+  // Defensive: ensure res.status exists before calling
+  if (typeof (res as any).status !== "function") {
+    // nothing we can do safely here
+    logger.error(
+      "Response object does not have status(); cannot send error body"
+    );
+    return;
+  }
 
   if (message.includes("Not allowed by CORS")) {
     return res.status(403).json({ error: "CORS error", details: message });
