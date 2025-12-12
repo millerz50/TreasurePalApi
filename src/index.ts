@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 if (process.env.NODE_ENV !== "production") {
   dotenv.config({ path: ".env.local" });
 }
+// In production Render injects env vars automatically
 
 import compression from "compression";
 import cors from "cors";
@@ -35,12 +36,13 @@ import "./strategies/google";
 const PORT = parseInt(process.env.PORT || "4011", 10);
 const app = express();
 
+// Trust proxy when in production (Render, Vercel, etc.)
 if (process.env.NODE_ENV === "production") {
   app.set("trust proxy", 1);
 }
 
 //
-// Appwrite Setup
+// Appwrite Client Setup
 //
 const client = new Client()
   .setEndpoint(process.env.APPWRITE_ENDPOINT || "")
@@ -50,9 +52,9 @@ const client = new Client()
 export const databases = new Databases(client);
 
 //
-// CORRECTED CORS — single middleware only
+// CORS configuration
 //
-const allowedOrigins = [
+const allowedOrigins = new Set([
   "http://localhost:3000",
   "https://treasure-pal.vercel.app",
   "https://www.treasurepal.co.zw",
@@ -62,16 +64,51 @@ const allowedOrigins = [
   "https://www.treasureprops.com",
   "https://treasureprops.com",
   "https://www.treasureprops.co.zw",
-];
+]);
 
+// Lightweight preflight + CORS middleware applied before anything else
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const origin = req.headers.origin as string | undefined;
+
+  // Allow server-to-server requests (no Origin) with a permissive header
+  if (!origin) {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+  } else if (allowedOrigins.has(origin)) {
+    // Echo the exact origin when allowed (required for credentials)
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Vary", "Origin");
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+  } else {
+    // If this is a preflight from a disallowed origin, reject early
+    if (req.method === "OPTIONS") {
+      return res.status(403).send("CORS origin not allowed");
+    }
+  }
+
+  res.setHeader(
+    "Access-Control-Allow-Methods",
+    "GET,POST,PUT,PATCH,DELETE,OPTIONS"
+  );
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type,Authorization,X-Requested-With,Accept,Origin"
+  );
+
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(204);
+  }
+
+  next();
+});
+
+// Also apply the standard cors middleware for normal requests
 app.use(
   cors({
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) return callback(null, true);
+      if (allowedOrigins.has(origin)) return callback(null, true);
       return callback(new Error(`Not allowed by CORS: ${origin}`));
     },
-    credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: [
       "Content-Type",
@@ -80,10 +117,10 @@ app.use(
       "Accept",
       "Origin",
     ],
+    credentials: true,
+    optionsSuccessStatus: 204,
   })
 );
-
-app.options("*", cors());
 
 //
 // Security + Performance
@@ -94,38 +131,38 @@ app.use(compression());
 //
 // Body parsing
 //
-app.use(express.json({ limit: "2mb" }));
+app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 //
-// Logging
+// Logging with Morgan + Winston
 //
 app.use(
   morgan("combined", {
-    stream: { write: (msg) => logger.info(msg.trim()) },
+    stream: {
+      write: (message) => logger.info(message.trim()),
+    },
   })
 );
 
 //
 // Rate limiting
 //
-app.use(
-  "/api",
-  rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 100,
-    standardHeaders: true,
-  })
-);
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use("/api", limiter);
 
 //
 // Session + Passport
 //
 const isProd = process.env.NODE_ENV === "production";
-
 app.use(
   session({
-    secret: process.env.SESSION_SECRET || "change-this",
+    secret: process.env.SESSION_SECRET || "change-this-in-prod",
     resave: false,
     saveUninitialized: false,
     cookie: {
@@ -186,24 +223,35 @@ app.get(
 );
 
 //
-// Health check
+// Health-check endpoint
 //
-app.get("/healthz", (_req, res) => res.status(200).json({ status: "ok" }));
+app.get("/healthz", (_req: Request, res: Response) => {
+  res.status(200).json({ status: "ok" });
+});
 
 //
 // Error handler
 //
-app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-  logger.error("❌ Error:", err);
+app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  const message = err instanceof Error ? err.message : String(err);
+  logger.error(`❌ Uncaught error: ${message}`, err);
 
-  if (err?.message?.includes("CORS")) {
-    return res.status(403).json({ error: "CORS error", details: err.message });
+  if (message.startsWith("Not allowed by CORS")) {
+    return res.status(403).json({ error: "CORS error", details: message });
   }
 
   res.status(500).json({
     error: "Internal server error",
-    details: err.message || err,
+    details: message,
   });
+});
+
+//
+// Graceful shutdown
+//
+process.on("SIGINT", async () => {
+  logger.info("🛑 Shutting down gracefully...");
+  process.exit(0);
 });
 
 //
