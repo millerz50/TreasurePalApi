@@ -61,7 +61,6 @@ export interface UserRow {
   country?: string | null;
   location?: string | null;
   dateOfBirth?: string | null;
-  phone?: string | null;
   agentId?: string | null;
   bio?: string | null;
   [key: string]: any;
@@ -108,7 +107,6 @@ export type SignupPayload = {
   bio?: string;
   metadata?: any[];
   dateOfBirth?: string;
-  phone?: string | null;
 };
 
 export async function signupUser(payload: SignupPayload) {
@@ -141,7 +139,6 @@ export async function signupUser(payload: SignupPayload) {
     bio: payload.bio ?? null,
     metadata: Array.isArray(payload.metadata) ? payload.metadata : [],
     dateOfBirth: payload.dateOfBirth ?? null,
-    phone: payload.phone ?? null,
     agentId: ID.unique(),
   };
 
