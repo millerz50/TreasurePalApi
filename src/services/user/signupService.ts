@@ -7,7 +7,7 @@ import { findByEmail } from "./gettersService";
 import { createUserRow } from "./userService";
 
 export type SignupPayload = {
-  accountId?: string;
+  accountid?: string;
   email: string;
   password: string;
   firstName: string;
@@ -27,7 +27,7 @@ export type SignupPayload = {
 export async function signupUser(payload: SignupPayload) {
   logStep("START signupUser", { email: payload.email });
   const normalizedEmail = payload.email.toLowerCase().trim();
-  const accountId = payload.accountId ?? ID.unique();
+  const accountId = payload.accountid ?? ID.unique();
 
   // Check if user already exists
   const existing = await findByEmail(normalizedEmail).catch(() => null);
