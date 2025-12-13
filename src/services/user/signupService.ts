@@ -64,7 +64,7 @@ export async function signupUser(payload: SignupPayload) {
   // Create DB row (profile metadata + hashed password + profile phone)
 
   const rowPayload = {
-    accountid: accountId, // ✅ matches schema
+    accountid: accountId, // ✅ lowercase
     email: normalizedEmail,
     firstname: payload.firstName, // ✅ lowercase
     surname: payload.surname,
@@ -76,9 +76,10 @@ export async function signupUser(payload: SignupPayload) {
     bio: payload.bio ?? null,
     metadata: Array.isArray(payload.metadata) ? payload.metadata : [],
     dateofbirth: payload.dateOfBirth ?? null, // ✅ lowercase
-    password: hashedPassword, // ✅ hashed password only
+    password: hashedPassword,
     phone: payload.phone ?? null,
     agentid: payload.role === "agent" ? ID.unique() : null, // ✅ lowercase
+    // ✅ lowercase
   };
 
   let createdRow;
