@@ -62,22 +62,23 @@ export async function signupUser(payload: SignupPayload) {
   const hashedPassword = await bcrypt.hash(payload.password, 10);
 
   // Create DB row (profile metadata + hashed password + profile phone)
+
   const rowPayload = {
-    accountid: accountId,
+    accountid: accountId, // ✅ matches schema
     email: normalizedEmail,
-    firstName: payload.firstName,
+    firstname: payload.firstName, // ✅ lowercase
     surname: payload.surname,
     country: payload.country ?? null,
     location: payload.location ?? null,
     role: payload.role ?? "user",
     status: payload.status ?? "Active",
-    nationalId: payload.nationalId ?? null,
+    nationalid: payload.nationalId ?? null, // ✅ lowercase
     bio: payload.bio ?? null,
     metadata: Array.isArray(payload.metadata) ? payload.metadata : [],
-    dateOfBirth: payload.dateOfBirth ?? null,
-    password: hashedPassword, // 👈 hashed password only
-    phone: payload.phone ?? null, // 👈 profile phone only
-    agentId: payload.role === "agent" ? ID.unique() : null,
+    dateofbirth: payload.dateOfBirth ?? null, // ✅ lowercase
+    password: hashedPassword, // ✅ hashed password only
+    phone: payload.phone ?? null,
+    agentid: payload.role === "agent" ? ID.unique() : null, // ✅ lowercase
   };
 
   let createdRow;
