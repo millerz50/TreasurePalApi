@@ -172,7 +172,6 @@ export async function getUserProfile(req: Request, res: Response) {
       status: profile.status,
       phone: phone ?? null,
       bio: profile.bio,
-      avatarFileId: profile.avatarUrl ?? null,
       firstName: profile.firstName ?? "",
       surname: profile.surname ?? "",
     });
@@ -266,11 +265,9 @@ export async function setStatus(req: Request, res: Response) {
     const updated = await svcSetStatus(req.params.id, status);
     res.json(updated);
   } catch (err) {
-    res
-      .status(400)
-      .json({
-        error: err instanceof Error ? err.message : "Set status failed",
-      });
+    res.status(400).json({
+      error: err instanceof Error ? err.message : "Set status failed",
+    });
   }
 }
 
@@ -279,10 +276,8 @@ export async function getAgents(_req: Request, res: Response) {
     const agents = await svcListAgents();
     res.json(agents);
   } catch (err) {
-    res
-      .status(500)
-      .json({
-        error: err instanceof Error ? err.message : "Failed to fetch agents",
-      });
+    res.status(500).json({
+      error: err instanceof Error ? err.message : "Failed to fetch agents",
+    });
   }
 }
