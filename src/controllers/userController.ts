@@ -31,7 +31,6 @@ function logStep(step: string, data?: any) {
   if (DEBUG) console.log(`=== STEP: ${step} ===`, data ?? "");
 }
 
-// Strict phone sanitizer (optional)
 function sanitizePhone(value: unknown): string | null {
   if (!value) return null;
   const s = String(value).trim();
@@ -39,7 +38,6 @@ function sanitizePhone(value: unknown): string | null {
   return /^\+\d{1,15}$/.test(normalized) ? normalized : null;
 }
 
-// Save phone locally in JSON
 async function savePhoneToExternalDB(userId: string, phone: string) {
   try {
     let data: Record<string, string> = {};
@@ -105,7 +103,10 @@ export async function signup(req: Request, res: Response) {
 
     const agentId = role === "agent" ? randomUUID() : undefined;
     logStep("Generated agent ID if applicable", { agentId });
+
+    // 👇 Controller just builds camelCase payload
     const servicePayload = {
+      accountId: req.body.accountId,
       email: email.toLowerCase(),
       password: hashedPassword,
       firstName,
@@ -119,11 +120,12 @@ export async function signup(req: Request, res: Response) {
       avatarUrl: avatarFileId,
       dateOfBirth,
       agentId,
-      accountId: req.body.accountId,
+      phone: sanitizePhone(req.body.phone),
     };
 
     let user;
     try {
+      // 👇 Service will normalize payload to schema keys
       user = await createUser(servicePayload);
       logStep("Created user in DB", user);
     } catch (err) {
