@@ -105,7 +105,6 @@ export async function signup(req: Request, res: Response) {
 
     const agentId = role === "agent" ? randomUUID() : undefined;
     logStep("Generated agent ID if applicable", { agentId });
-
     const servicePayload = {
       email: email.toLowerCase(),
       password: hashedPassword,
