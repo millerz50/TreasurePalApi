@@ -3,8 +3,8 @@ import { Request, Response } from "express";
 import fs from "fs/promises";
 import path from "path";
 
+import { signupUser } from "../services/user/signupService";
 import {
-  createUser,
   findByEmail,
   getUserByAccountId,
   deleteUser as svcDeleteUser,
@@ -29,11 +29,18 @@ function logStep(step: string, data?: any) {
   if (DEBUG) console.log(`=== STEP: ${step} ===`, data ?? "");
 }
 
-function sanitizePhone(value: unknown): string | null {
-  if (!value) return null;
+/**
+ * IMPORTANT:
+ * - Controllers return `undefined` for optional fields
+ * - NOT `null`
+ */
+function sanitizePhone(value: unknown): string | undefined {
+  if (!value) return undefined;
+
   const s = String(value).trim();
   const normalized = s.replace(/^[\uFF0B]/, "+").replace(/[ \-\(\)]/g, "");
-  return /^\+\d{1,15}$/.test(normalized) ? normalized : null;
+
+  return /^\+\d{1,15}$/.test(normalized) ? normalized : undefined;
 }
 
 async function savePhoneToExternalDB(userId: string, phone: string) {
@@ -45,6 +52,7 @@ async function savePhoneToExternalDB(userId: string, phone: string) {
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
     }
+
     data[userId] = phone;
     await fs.writeFile(dbFile, JSON.stringify(data, null, 2), "utf-8");
   } catch (err) {
@@ -53,7 +61,7 @@ async function savePhoneToExternalDB(userId: string, phone: string) {
 }
 
 // ----------------------------
-// Signup handler (FIXED)
+// Signup handler
 // ----------------------------
 export async function signup(req: Request, res: Response) {
   try {
@@ -77,13 +85,13 @@ export async function signup(req: Request, res: Response) {
 
     logStep("Signup request received", { email, role });
 
-    // Controller-level existence check (optional)
+    // Optional controller-level existence check
     const exists = await findByEmail(email.toLowerCase());
     if (exists) {
       return res.status(409).json({ error: "User already exists" });
     }
 
-    // Optional avatar upload (controller concern only)
+    // Optional avatar upload
     let avatarUrl: string | undefined;
     try {
       const file = (req as any).file as Express.Multer.File | undefined;
@@ -92,6 +100,7 @@ export async function signup(req: Request, res: Response) {
           file.buffer,
           file.originalname
         );
+
         avatarUrl =
           result?.fileId ?? (typeof result === "string" ? result : undefined);
       }
@@ -99,7 +108,10 @@ export async function signup(req: Request, res: Response) {
       logError("avatarUpload failed", err, { email });
     }
 
-    // ✅ RAW SignupPayload — NO mapping, NO hashing
+    // ✅ RAW SignupPayload
+    // - No hashing
+    // - No mapping
+    // - No DB concerns
     const signupPayload = {
       email: email.toLowerCase(),
       password,
@@ -111,11 +123,11 @@ export async function signup(req: Request, res: Response) {
       country,
       location,
       dateOfBirth,
-      phone: sanitizePhone(phone),
+      phone: sanitizePhone(phone), // ✅ string | undefined
       avatarUrl,
     };
 
-    const result = await createUser(signupPayload);
+    const result = await signupUser(signupPayload);
 
     // Optional external phone storage
     if (result?.profile?.$id && signupPayload.phone) {
@@ -165,7 +177,7 @@ export async function getUserProfile(req: Request, res: Response) {
       firstName: profile.firstName ?? "",
       surname: profile.surname ?? "",
     });
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: "Server error" });
   }
 }
@@ -178,7 +190,7 @@ export async function editUser(req: Request, res: Response) {
 
     const updated = await svcUpdateUser(req.params.id, updates);
     res.json(updated);
-  } catch (err) {
+  } catch {
     res.status(400).json({ error: "Update failed" });
   }
 }
