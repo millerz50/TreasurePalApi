@@ -7,26 +7,32 @@ export function toUserDocument(
   hashedPassword: string
 ) {
   return {
+    // ✅ matches schema
     accountid: accountId,
     email: payload.email.toLowerCase(),
 
-    firstname: payload.firstName,
+    // ✅ REQUIRED (case-sensitive)
+    firstName: payload.firstName,
     surname: payload.surname,
 
+    // ✅ enums / strings
     role: payload.role ?? "user",
     status: payload.status ?? "Active",
 
-    nationalid: payload.nationalId ?? null,
+    // ✅ optional fields
+    nationalId: payload.nationalId ?? null,
     bio: payload.bio ?? null,
     metadata: Array.isArray(payload.metadata) ? payload.metadata : [],
 
-    dateofbirth: payload.dateOfBirth ?? null,
+    dateOfBirth: payload.dateOfBirth ?? null,
     country: payload.country ?? null,
     location: payload.location ?? null,
 
+    // ✅ auth-related
     password: hashedPassword,
     phone: payload.phone ?? null,
 
-    agentid: payload.role === "agent" ? ID.unique() : null,
+    // ✅ agent only
+    agentId: payload.role === "agent" ? ID.unique() : null,
   };
 }
