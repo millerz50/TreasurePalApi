@@ -1,6 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import bcrypt from "bcrypt";
-import { randomUUID } from "crypto";
 import { Request, Response } from "express";
 import fs from "fs/promises";
 import path from "path";
@@ -49,15 +47,13 @@ async function savePhoneToExternalDB(userId: string, phone: string) {
     }
     data[userId] = phone;
     await fs.writeFile(dbFile, JSON.stringify(data, null, 2), "utf-8");
-    logStep("Saved phone locally", { userId, phone });
   } catch (err) {
     logError("savePhoneToExternalDB", err, { userId, phone });
-    throw err;
   }
 }
 
 // ----------------------------
-// Signup handler
+// Signup handler (FIXED)
 // ----------------------------
 export async function signup(req: Request, res: Response) {
   try {
@@ -72,20 +68,23 @@ export async function signup(req: Request, res: Response) {
       country,
       location,
       dateOfBirth,
+      phone,
     } = req.body;
 
     if (!email || !password || !firstName || !surname) {
       return res.status(400).json({ error: "Missing required fields" });
     }
-    logStep("Signup request received", { email, firstName, surname, role });
 
+    logStep("Signup request received", { email, role });
+
+    // Controller-level existence check (optional)
     const exists = await findByEmail(email.toLowerCase());
-    if (exists) return res.status(409).json({ error: "User already exists" });
+    if (exists) {
+      return res.status(409).json({ error: "User already exists" });
+    }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-    logStep("Password hashed");
-
-    let avatarFileId: string | undefined;
+    // Optional avatar upload (controller concern only)
+    let avatarUrl: string | undefined;
     try {
       const file = (req as any).file as Express.Multer.File | undefined;
       if (file) {
@@ -93,47 +92,39 @@ export async function signup(req: Request, res: Response) {
           file.buffer,
           file.originalname
         );
-        avatarFileId =
+        avatarUrl =
           result?.fileId ?? (typeof result === "string" ? result : undefined);
-        logStep("Avatar uploaded", { avatarFileId });
       }
     } catch (err) {
       logError("avatarUpload failed", err, { email });
     }
 
-    const agentId = role === "agent" ? randomUUID() : undefined;
-    logStep("Generated agent ID if applicable", { agentId });
-
-    // 👇 Controller just builds camelCase payload
-    const servicePayload = {
-      accountId: req.body.accountId,
+    // ✅ RAW SignupPayload — NO mapping, NO hashing
+    const signupPayload = {
       email: email.toLowerCase(),
-      password: hashedPassword,
+      password,
       firstName,
       surname,
+      role,
+      nationalId,
+      bio,
       country,
       location,
-      role,
-      status: "Active",
-      nationalId,
-      bio: bio ?? undefined,
-      avatarUrl: avatarFileId,
       dateOfBirth,
-      agentId,
-      phone: sanitizePhone(req.body.phone),
+      phone: sanitizePhone(phone),
+      avatarUrl,
     };
 
-    let user;
-    try {
-      // 👇 Service will normalize payload to schema keys
-      user = await createUser(servicePayload);
-      logStep("Created user in DB", user);
-    } catch (err) {
-      logError("createUser failed", err, { servicePayload });
-      return res.status(500).json({ error: "Failed to create user" });
+    const result = await createUser(signupPayload);
+
+    // Optional external phone storage
+    if (result?.profile?.$id && signupPayload.phone) {
+      await savePhoneToExternalDB(result.profile.$id, signupPayload.phone);
     }
 
-    return res.status(201).json({ profile: user.profile });
+    return res.status(201).json({
+      profile: result.profile,
+    });
   } catch (err) {
     logError("signup handler failed", err);
     return res.status(500).json({ error: "Internal server error" });
@@ -161,10 +152,8 @@ export async function getUserProfile(req: Request, res: Response) {
     try {
       const fileContent = await fs.readFile(dbFile, "utf-8");
       const data = JSON.parse(fileContent) as Record<string, string>;
-      if (profile?.$id) phone = data[profile.$id];
-    } catch (err) {
-      if (DEBUG) console.error("Failed to read phone JSON:", err);
-    }
+      if (profile.$id) phone = data[profile.$id];
+    } catch {}
 
     res.json({
       userId: profile.$id,
@@ -177,48 +166,38 @@ export async function getUserProfile(req: Request, res: Response) {
       surname: profile.surname ?? "",
     });
   } catch (err) {
-    res
-      .status(500)
-      .json({ error: err instanceof Error ? err.message : "Server error" });
+    res.status(500).json({ error: "Server error" });
   }
 }
 
 export async function editUser(req: Request, res: Response) {
   try {
-    const targetId = req.params.id;
     const updates = { ...req.body };
-    delete (updates as any).role;
-    delete (updates as any).status;
-    const updated = await svcUpdateUser(targetId, updates);
+    delete updates.role;
+    delete updates.status;
+
+    const updated = await svcUpdateUser(req.params.id, updates);
     res.json(updated);
   } catch (err) {
-    res
-      .status(400)
-      .json({ error: err instanceof Error ? err.message : "Update failed" });
+    res.status(400).json({ error: "Update failed" });
   }
 }
 
 export async function deleteUser(req: Request, res: Response) {
   try {
-    const targetId = req.params.id;
-    await svcDeleteUser(targetId);
+    await svcDeleteUser(req.params.id);
     res.status(204).send();
-  } catch (err) {
-    res
-      .status(400)
-      .json({ error: err instanceof Error ? err.message : "Delete failed" });
+  } catch {
+    res.status(400).json({ error: "Delete failed" });
   }
 }
 
 export async function getAllUsers(req: Request, res: Response) {
   try {
     const limit = Number(req.query.limit ?? 100);
-    const result = await svcListUsers(limit);
-    res.json(result);
-  } catch (err) {
-    res
-      .status(500)
-      .json({ error: err instanceof Error ? err.message : "Server error" });
+    res.json(await svcListUsers(limit));
+  } catch {
+    res.status(500).json({ error: "Server error" });
   }
 }
 
@@ -227,58 +206,39 @@ export async function getUserById(req: Request, res: Response) {
     const user = await svcGetUserById(req.params.id);
     if (!user) return res.status(404).json({ error: "Not found" });
     res.json(user);
-  } catch (err) {
-    res
-      .status(500)
-      .json({ error: err instanceof Error ? err.message : "Server error" });
+  } catch {
+    res.status(500).json({ error: "Server error" });
   }
 }
 
 export async function updateUser(req: Request, res: Response) {
   try {
-    const updates = req.body;
-    const updated = await svcUpdateUser(req.params.id, updates);
-    res.json(updated);
-  } catch (err) {
-    res
-      .status(400)
-      .json({ error: err instanceof Error ? err.message : "Update failed" });
+    res.json(await svcUpdateUser(req.params.id, req.body));
+  } catch {
+    res.status(400).json({ error: "Update failed" });
   }
 }
 
 export async function setRole(req: Request, res: Response) {
   try {
-    const { role } = req.body;
-    if (!role) return res.status(400).json({ error: "role required" });
-    const updated = await svcSetRole(req.params.id, role);
-    res.json(updated);
-  } catch (err) {
-    res
-      .status(400)
-      .json({ error: err instanceof Error ? err.message : "Set role failed" });
+    res.json(await svcSetRole(req.params.id, req.body.role));
+  } catch {
+    res.status(400).json({ error: "Set role failed" });
   }
 }
 
 export async function setStatus(req: Request, res: Response) {
   try {
-    const { status } = req.body;
-    if (!status) return res.status(400).json({ error: "status required" });
-    const updated = await svcSetStatus(req.params.id, status);
-    res.json(updated);
-  } catch (err) {
-    res.status(400).json({
-      error: err instanceof Error ? err.message : "Set status failed",
-    });
+    res.json(await svcSetStatus(req.params.id, req.body.status));
+  } catch {
+    res.status(400).json({ error: "Set status failed" });
   }
 }
 
 export async function getAgents(_req: Request, res: Response) {
   try {
-    const agents = await svcListAgents();
-    res.json(agents);
-  } catch (err) {
-    res.status(500).json({
-      error: err instanceof Error ? err.message : "Failed to fetch agents",
-    });
+    res.json(await svcListAgents());
+  } catch {
+    res.status(500).json({ error: "Failed to fetch agents" });
   }
 }
