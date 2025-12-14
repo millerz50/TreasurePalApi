@@ -2,42 +2,28 @@ import bcrypt from "bcryptjs";
 import { ID } from "node-appwrite";
 import { logError, logStep } from "../../services/lib/logger";
 import { safeFormat } from "../../services/lib/models/user";
+
 import { createAuthUser } from "./authService";
 import { findByEmail } from "./gettersService";
+import { toUserDocument } from "./user.mapper";
+import type { SignupPayload } from "./user.types";
 import { createUserRow } from "./userService";
-
-export type SignupPayload = {
-  accountid?: string;
-  email: string;
-  password: string;
-  firstName: string;
-  surname: string;
-  phone?: string; // profile phone
-  country?: string;
-  location?: string;
-  role?: string;
-  status?: string;
-  nationalId?: string;
-  bio?: string;
-  metadata?: any[];
-  dateOfBirth?: string;
-  authPhone?: string; // 👈 separate field for Auth phone
-};
 
 export async function signupUser(payload: SignupPayload) {
   logStep("START signupUser", { email: payload.email });
+
   const normalizedEmail = payload.email.toLowerCase().trim();
   const accountId = payload.accountid ?? ID.unique();
 
-  // Check if user already exists
+  // 1️⃣ Check existing user
   const existing = await findByEmail(normalizedEmail).catch(() => null);
   if (existing) {
-    const error: any = new Error("User already exists with this email.");
-    error.status = 409;
-    throw error;
+    const err: any = new Error("User already exists with this email");
+    err.status = 409;
+    throw err;
   }
 
-  // Create Appwrite Auth user (credentials + authPhone if supported)
+  // 2️⃣ Create Appwrite Auth user
   let authUser;
   try {
     authUser = await createAuthUser(
@@ -45,51 +31,34 @@ export async function signupUser(payload: SignupPayload) {
       normalizedEmail,
       payload.password
     );
-    // If SDK supports phone update, set authPhone separately
-    if (payload.authPhone) {
-      // @ts-ignore
-      if (typeof authUser.updatePhone === "function") {
-        // @ts-ignore
-        await authUser.updatePhone(payload.authPhone);
-      }
+
+    if (
+      payload.authPhone &&
+      typeof (authUser as any).updatePhone === "function"
+    ) {
+      await (authUser as any).updatePhone(payload.authPhone);
     }
   } catch (err) {
     logError("signupUser.authCreate", err);
     throw err;
   }
 
-  // Hash password for DB only
+  // 3️⃣ Hash password for DB
   const hashedPassword = await bcrypt.hash(payload.password, 10);
 
-  // Create DB row (profile metadata + hashed password + profile phone)
+  // 4️⃣ Map DB document
+  const document = toUserDocument(payload, accountId, hashedPassword);
 
-  const rowPayload = {
-    accountid: accountId, // ✅ lowercase
-    email: normalizedEmail,
-    firstname: payload.firstName, // ✅ lowercase
-    surname: payload.surname,
-    country: payload.country ?? null,
-    location: payload.location ?? null,
-    role: payload.role ?? "user",
-    status: payload.status ?? "Active",
-    nationalid: payload.nationalId ?? null, // ✅ lowercase
-    bio: payload.bio ?? null,
-    metadata: Array.isArray(payload.metadata) ? payload.metadata : [],
-    dateofbirth: payload.dateOfBirth ?? null, // ✅ lowercase
-    password: hashedPassword,
-    phone: payload.phone ?? null,
-    agentid: payload.role === "agent" ? ID.unique() : null, // ✅ lowercase
-    // ✅ lowercase
-  };
-
+  // 5️⃣ Create DB row
   let createdRow;
   try {
-    createdRow = await createUserRow(rowPayload);
+    createdRow = await createUserRow(document);
   } catch (err) {
     logError("signupUser.createRow", err);
     throw err;
   }
 
+  // 6️⃣ Return response
   return {
     status: "SUCCESS",
     userId: accountId,
