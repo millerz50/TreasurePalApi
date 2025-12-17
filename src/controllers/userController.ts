@@ -29,17 +29,10 @@ function logStep(step: string, data?: any) {
   if (DEBUG) console.log(`=== STEP: ${step} ===`, data ?? "");
 }
 
-/**
- * IMPORTANT:
- * - Controllers return `undefined` for optional fields
- * - NOT `null`
- */
 function sanitizePhone(value: unknown): string | undefined {
   if (!value) return undefined;
-
   const s = String(value).trim();
   const normalized = s.replace(/^[\uFF0B]/, "+").replace(/[ \-\(\)]/g, "");
-
   return /^\+\d{1,15}$/.test(normalized) ? normalized : undefined;
 }
 
@@ -52,12 +45,38 @@ async function savePhoneToExternalDB(userId: string, phone: string) {
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
     }
-
     data[userId] = phone;
     await fs.writeFile(dbFile, JSON.stringify(data, null, 2), "utf-8");
   } catch (err) {
     logError("savePhoneToExternalDB", err, { userId, phone });
   }
+}
+
+// ----------------------------
+// Payload Mapper
+// ----------------------------
+function toPublicUserPayload(profile: any, phone?: string) {
+  return {
+    userId: profile.$id,
+    email: profile.email,
+    firstName: profile.firstName ?? "",
+    surname: profile.surname ?? "",
+    role: profile.role ?? "user",
+    status: profile.status ?? "Not Verified",
+    accountid: profile.accountid,
+    phone: phone ?? profile.phone ?? undefined,
+    bio: profile.bio ?? undefined,
+    nationalId: profile.nationalId ?? undefined,
+    country: profile.country ?? undefined,
+    location: profile.location ?? undefined,
+    dateOfBirth: profile.dateOfBirth ?? undefined,
+    agentId: profile.agentId ?? undefined,
+    credits: typeof profile.credits === "number" ? profile.credits : 0,
+    lastCreditAction: profile.lastCreditAction ?? undefined,
+    lastLoginReward: profile.lastLoginReward ?? undefined,
+    $createdAt: profile.$createdAt,
+    $updatedAt: profile.$updatedAt,
+  };
 }
 
 // ----------------------------
@@ -85,13 +104,11 @@ export async function signup(req: Request, res: Response) {
 
     logStep("Signup request received", { email, role });
 
-    // Optional controller-level existence check
     const exists = await findByEmail(email.toLowerCase());
     if (exists) {
       return res.status(409).json({ error: "User already exists" });
     }
 
-    // Optional avatar upload
     let avatarUrl: string | undefined;
     try {
       const file = (req as any).file as Express.Multer.File | undefined;
@@ -100,7 +117,6 @@ export async function signup(req: Request, res: Response) {
           file.buffer,
           file.originalname
         );
-
         avatarUrl =
           result?.fileId ?? (typeof result === "string" ? result : undefined);
       }
@@ -108,10 +124,6 @@ export async function signup(req: Request, res: Response) {
       logError("avatarUpload failed", err, { email });
     }
 
-    // ✅ RAW SignupPayload
-    // - No hashing
-    // - No mapping
-    // - No DB concerns
     const signupPayload = {
       email: email.toLowerCase(),
       password,
@@ -123,13 +135,12 @@ export async function signup(req: Request, res: Response) {
       country,
       location,
       dateOfBirth,
-      phone: sanitizePhone(phone), // ✅ string | undefined
+      phone: sanitizePhone(phone),
       avatarUrl,
     };
 
     const result = await signupUser(signupPayload);
 
-    // Optional external phone storage
     if (result?.profile?.$id && signupPayload.phone) {
       await savePhoneToExternalDB(result.profile.$id, signupPayload.phone);
     }
@@ -167,17 +178,9 @@ export async function getUserProfile(req: Request, res: Response) {
       if (profile.$id) phone = data[profile.$id];
     } catch {}
 
-    res.json({
-      userId: profile.$id,
-      email: profile.email,
-      role: profile.role,
-      status: profile.status,
-      phone: phone ?? null,
-      bio: profile.bio,
-      firstName: profile.firstName ?? "",
-      surname: profile.surname ?? "",
-    });
-  } catch {
+    res.json(toPublicUserPayload(profile, phone));
+  } catch (err) {
+    logError("getUserProfile failed", err);
     res.status(500).json({ error: "Server error" });
   }
 }
@@ -187,7 +190,6 @@ export async function editUser(req: Request, res: Response) {
     const updates = { ...req.body };
     delete updates.role;
     delete updates.status;
-
     const updated = await svcUpdateUser(req.params.id, updates);
     res.json(updated);
   } catch {
