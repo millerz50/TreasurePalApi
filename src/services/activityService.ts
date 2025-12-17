@@ -69,13 +69,19 @@ export async function fetchActivityForUser(
 ====================================================== */
 export async function fetchActivityByRole(
   role: "user" | "agent" | "admin",
+  actorId?: string,
   limit = 20
 ): Promise<Activity[]> {
-  const res = await getTablesDB().listRows(DB_ID, ACTIVITY_TABLE, [
+  const queries: any[] = [
     Query.equal("actorRole", role),
-    Query.orderDesc("createdAt"),
+    Query.orderDesc("$createdAt"), // use system field
     Query.limit(limit),
-  ]);
+  ];
 
+  if (actorId) {
+    queries.push(Query.equal("actorId", actorId));
+  }
+
+  const res = await getTablesDB().listRows(DB_ID, ACTIVITY_TABLE, queries);
   return res.rows.map(safeFormatActivity);
 }
