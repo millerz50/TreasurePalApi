@@ -35,6 +35,64 @@ export async function deleteUser(userId: string) {
 }
 
 /* ============================
+   Credits helpers (NEW)
+============================ */
+
+/** Get current credit balance safely */
+export async function getCredits(userId: string): Promise<number> {
+  const user = await getUserById(userId);
+  return user?.credits ?? 0;
+}
+
+/** Add credits (signup bonus, daily login, admin reward) */
+export async function addCredits(
+  userId: string,
+  amount: number,
+  reason?: string
+) {
+  if (amount <= 0) return;
+
+  const current = await getCredits(userId);
+
+  return updateUser(userId, {
+    credits: current + amount,
+    lastCreditAction: reason ?? "CREDIT_ADDED",
+  });
+}
+
+/** Deduct credits safely (posting properties, promotions) */
+export async function deductCredits(
+  userId: string,
+  amount: number,
+  reason?: string
+) {
+  if (amount <= 0) return;
+
+  const current = await getCredits(userId);
+
+  if (current < amount) {
+    const err: any = new Error("Insufficient credits");
+    err.status = 402;
+    throw err;
+  }
+
+  return updateUser(userId, {
+    credits: current - amount,
+    lastCreditAction: reason ?? "CREDIT_DEDUCTED",
+  });
+}
+
+/** Spend credits with enforcement (recommended) */
+export async function spendCredits(
+  userId: string,
+  amount: number,
+  reason: string
+) {
+  await deductCredits(userId, amount, reason);
+  return true;
+}
+
+/* ============================
    Admin helpers
 ============================ */
 

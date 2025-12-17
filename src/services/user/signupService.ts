@@ -9,13 +9,17 @@ import { toUserDocument } from "./user.mapper";
 import type { SignupPayload } from "./user.types";
 import { createUserRow } from "./userService";
 
+const SIGNUP_BONUS_CREDITS = 40;
+
 export async function signupUser(payload: SignupPayload) {
   logStep("START signupUser", { email: payload.email });
 
   const normalizedEmail = payload.email.toLowerCase().trim();
   const accountId = payload.accountid ?? ID.unique();
 
-  // 1️⃣ Check existing user
+  /* ----------------------------------
+     1️⃣ Check existing user
+  ----------------------------------- */
   const existing = await findByEmail(normalizedEmail).catch(() => null);
   if (existing) {
     const err: any = new Error("User already exists with this email");
@@ -23,7 +27,9 @@ export async function signupUser(payload: SignupPayload) {
     throw err;
   }
 
-  // 2️⃣ Create Appwrite Auth user
+  /* ----------------------------------
+     2️⃣ Create Appwrite Auth user
+  ----------------------------------- */
   let authUser;
   try {
     authUser = await createAuthUser(
@@ -43,13 +49,27 @@ export async function signupUser(payload: SignupPayload) {
     throw err;
   }
 
-  // 3️⃣ Hash password for DB
+  /* ----------------------------------
+     3️⃣ Hash password
+  ----------------------------------- */
   const hashedPassword = await bcrypt.hash(payload.password, 10);
 
-  // 4️⃣ Map DB document
-  const document = toUserDocument(payload, accountId, hashedPassword);
+  /* ----------------------------------
+     4️⃣ Build DB document (CORRECT)
+  ----------------------------------- */
+  const document = toUserDocument(
+    {
+      ...payload,
+      email: normalizedEmail, // ✔ still valid SignupPayload
+    },
+    accountId,
+    hashedPassword,
+    SIGNUP_BONUS_CREDITS // ✔ server-controlled
+  );
 
-  // 5️⃣ Create DB row
+  /* ----------------------------------
+     5️⃣ Create DB row
+  ----------------------------------- */
   let createdRow;
   try {
     createdRow = await createUserRow(document);
@@ -58,7 +78,9 @@ export async function signupUser(payload: SignupPayload) {
     throw err;
   }
 
-  // 6️⃣ Return response
+  /* ----------------------------------
+     6️⃣ Return response
+  ----------------------------------- */
   return {
     status: "SUCCESS",
     userId: accountId,

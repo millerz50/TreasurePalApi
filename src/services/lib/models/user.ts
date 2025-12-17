@@ -16,6 +16,9 @@ export interface UserRow {
   bio?: string | null;
   phone?: string | null;
   password?: string;
+  credits: number;
+  lastCreditAction?: string | null; // ✅ ADD THIS
+  lastLoginReward?: string | null;
 }
 
 export function safeFormat(row: any): UserRow | null {

@@ -13,15 +13,22 @@ import {
   signup,
   updateUser,
 } from "../controllers/userController";
+
+import {
+  addCreditsController,
+  getCreditsController,
+  spendCreditsController,
+} from "../controllers/creditsController";
+
 import { authMiddleware } from "../middleware/authMiddleware";
 
 import sdk, { Client } from "node-appwrite";
 
 const router = express.Router();
 
-// -------------------------------------------------------
-// INIT APPWRITE CLIENT (for OTP verification route)
-// -------------------------------------------------------
+/* ======================================================
+   INIT APPWRITE CLIENT (OTP verification)
+====================================================== */
 const client = new Client()
   .setEndpoint(process.env.APPWRITE_ENDPOINT!)
   .setProject(process.env.APPWRITE_PROJECT_ID!)
@@ -29,9 +36,10 @@ const client = new Client()
 
 const accounts = new sdk.Account(client);
 
-// -------------------------------------------------------
-// 🚀 OTP VERIFICATION (POST /users/verify-phone)
-// -------------------------------------------------------
+/* ======================================================
+   OTP VERIFICATION
+   POST /users/verify-phone
+====================================================== */
 router.post("/verify-phone", async (req, res) => {
   try {
     const { userId, otp } = req.body;
@@ -42,7 +50,6 @@ router.post("/verify-phone", async (req, res) => {
       });
     }
 
-    // Try verifying OTP
     await accounts.updatePhoneSession(userId, otp);
 
     return res.json({
@@ -57,23 +64,39 @@ router.post("/verify-phone", async (req, res) => {
   }
 });
 
-// -------------------------------------------------------
-// Existing User Routes
-// -------------------------------------------------------
+/* ======================================================
+   AUTH ROUTES
+====================================================== */
 router.post("/signup", signup);
 router.post("/login", loginUser);
 
+/* ======================================================
+   PROFILE
+====================================================== */
 router.get("/me", authMiddleware, getUserProfile);
 
-router.put("/:id", editUser);
-router.delete("/:id", deleteUser);
+/* ======================================================
+   USERS
+====================================================== */
+router.get("/", authMiddleware, getAllUsers);
+router.get("/agents", authMiddleware, getAgents);
+router.get("/:id", authMiddleware, getUserById);
 
-router.get("/", getAllUsers);
-router.get("/agents", getAgents);
-router.get("/:id", getUserById);
+router.put("/:id", authMiddleware, updateUser);
+router.patch("/:id", authMiddleware, editUser);
+router.delete("/:id", authMiddleware, deleteUser);
 
-router.patch("/:id/role", setRole);
-router.patch("/:id/status", setStatus);
-router.put("/:id", updateUser);
+/* ======================================================
+   ADMIN
+====================================================== */
+router.patch("/:id/role", authMiddleware, setRole);
+router.patch("/:id/status", authMiddleware, setStatus);
+
+/* ======================================================
+   💰 CREDITS
+====================================================== */
+router.get("/:id/credits", authMiddleware, getCreditsController);
+router.post("/:id/credits/add", authMiddleware, addCreditsController);
+router.post("/:id/credits/spend", authMiddleware, spendCreditsController);
 
 export default router;

@@ -1,3 +1,4 @@
+// user.types.ts
 export type SignupPayload = {
   accountid?: string;
 
@@ -11,7 +12,7 @@ export type SignupPayload = {
   country?: string;
   location?: string;
 
-  role?: "user" | "agent" | string;
+  role?: "user" | "agent";
   status?: "Not Verified" | "Pending" | "Active" | "Suspended";
 
   nationalId?: string;
@@ -19,5 +20,6 @@ export type SignupPayload = {
   metadata?: any[];
   dateOfBirth?: string;
 
+  // Used only for Appwrite auth
   authPhone?: string;
 };

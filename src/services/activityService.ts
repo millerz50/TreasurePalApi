@@ -1,95 +1,80 @@
-// services/activityService.ts
-/**
- * Minimal service layer for recent activity.
- * Replace the mock implementations with real DB queries (Postgres, Mongo, etc.)
- * or calls to your event store.
- */
+// services/activity/activityService.ts
+import { ID, Query, TablesDB } from "node-appwrite";
+import { getClient, getEnv } from "../../src/services/lib/env";
+import { safeFormatActivity } from "./services/activity/activity.mapper";
+import { Activity, ActivityAction } from "./services/activity/activity.types";
 
-export type Activity = {
-  id: string;
+const DB_ID = getEnv("APPWRITE_DATABASE_ID") ?? "";
+const ACTIVITY_TABLE = getEnv("APPWRITE_ACTIVITY_TABLE_ID") || "activity";
+
+function getTablesDB(): TablesDB {
+  return new TablesDB(getClient());
+}
+
+/* ======================================================
+   CREATE ACTIVITY
+====================================================== */
+export async function logActivity(params: {
+  actorId: string;
+  actorRole: "user" | "agent" | "admin";
+  action: ActivityAction;
   message: string;
-  createdAt: string;
-  actorId?: string;
-  actorRole?: string;
-  meta?: Record<string, any>;
-};
-
-type FetchOptions = {
-  limit?: number;
-  publicOnly?: boolean;
-};
-
-const now = () => new Date().toISOString();
-
-/**
- * Mock dataset (for local/dev). Replace with DB queries.
- */
-const MOCK_ACTIVITIES: Activity[] = [
-  {
-    id: "a1",
-    message: "Property 123 listed",
-    createdAt: now(),
-    actorId: "692426dd000ad4665c6e",
-    actorRole: "agent",
-  },
-  {
-    id: "a2",
-    message: "User jane favorited property 123",
-    createdAt: now(),
-    actorId: "user-1",
-    actorRole: "user",
-  },
-  {
-    id: "a3",
-    message: "Agent bob invited new agent",
-    createdAt: now(),
-    actorId: "admin-1",
-    actorRole: "admin",
-  },
-];
-
-/**
- * Fetch recent activity (global)
- */
-export async function fetchRecentActivity(
-  opts: FetchOptions = {}
-): Promise<Activity[]> {
-  // Replace with DB: SELECT ... ORDER BY createdAt DESC LIMIT opts.limit
-  const limit = opts.limit ?? 20;
-  const items = MOCK_ACTIVITIES.slice()
-    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
-    .slice(0, limit);
-  return items;
+  amount?: number;
+  refId?: string;
+  refType?: string;
+}) {
+  return getTablesDB().createRow(DB_ID, ACTIVITY_TABLE, ID.unique(), {
+    actorId: params.actorId,
+    actorRole: params.actorRole,
+    action: params.action,
+    message: params.message,
+    amount: params.amount ?? null,
+    refId: params.refId ?? null,
+    refType: params.refType ?? null,
+    createdAt: new Date().toISOString(),
+  });
 }
 
-/**
- * Fetch recent activity for a specific agent
- */
-export async function fetchRecentActivityForAgent(
-  agentId: string,
-  opts: FetchOptions = {}
-): Promise<Activity[]> {
-  const limit = opts.limit ?? 20;
-  const items = MOCK_ACTIVITIES.filter(
-    (a) => a.actorRole === "agent" && a.actorId === agentId
-  )
-    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
-    .slice(0, limit);
-  return items;
+/* ======================================================
+   FETCH RECENT ACTIVITY
+====================================================== */
+export async function fetchRecentActivity(limit = 20): Promise<Activity[]> {
+  const res = await getTablesDB().listRows(DB_ID, ACTIVITY_TABLE, [
+    Query.orderDesc("createdAt"),
+    Query.limit(limit),
+  ]);
+
+  return res.rows.map(safeFormatActivity);
 }
 
-/**
- * Fetch recent activity for a specific user
- */
-export async function fetchRecentActivityForUser(
+/* ======================================================
+   FETCH ACTIVITY BY USER
+====================================================== */
+export async function fetchActivityForUser(
   userId: string,
-  opts: FetchOptions = {}
+  limit = 20
 ): Promise<Activity[]> {
-  const limit = opts.limit ?? 20;
-  const items = MOCK_ACTIVITIES.filter(
-    (a) => a.actorRole === "user" && a.actorId === userId
-  )
-    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
-    .slice(0, limit);
-  return items;
+  const res = await getTablesDB().listRows(DB_ID, ACTIVITY_TABLE, [
+    Query.equal("actorId", userId),
+    Query.orderDesc("createdAt"),
+    Query.limit(limit),
+  ]);
+
+  return res.rows.map(safeFormatActivity);
+}
+
+/* ======================================================
+   FETCH ACTIVITY BY ROLE
+====================================================== */
+export async function fetchActivityByRole(
+  role: "user" | "agent" | "admin",
+  limit = 20
+): Promise<Activity[]> {
+  const res = await getTablesDB().listRows(DB_ID, ACTIVITY_TABLE, [
+    Query.equal("actorRole", role),
+    Query.orderDesc("createdAt"),
+    Query.limit(limit),
+  ]);
+
+  return res.rows.map(safeFormatActivity);
 }
