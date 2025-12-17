@@ -1,9 +1,9 @@
 // controllers/activityController.ts
 import { Request, Response } from "express";
 import {
+  fetchActivityByRole,
+  fetchActivityForUser,
   fetchRecentActivity,
-  fetchRecentActivityForAgent,
-  fetchRecentActivityForUser,
 } from "../services/activityService";
 
 /**
@@ -19,19 +19,20 @@ export async function getRecentActivityController(req: Request, res: Response) {
     let activities;
     if (scope === "all") {
       // admin-level: return everything (authMiddleware should ensure admin)
-      activities = await fetchRecentActivity({ limit: 50 });
+      activities = await fetchRecentActivity(50);
     } else if (scope === "agent") {
       const agentId =
         (req.query.agentId as string) || (req.user as any)?.userId;
       if (!agentId) return res.status(400).json({ error: "agentId required" });
-      activities = await fetchRecentActivityForAgent(agentId, { limit: 50 });
+      // use fetchActivityByRole for agent scope
+      activities = await fetchActivityByRole("agent", 50);
     } else if (scope === "user") {
       const userId = (req.query.userId as string) || (req.user as any)?.userId;
       if (!userId) return res.status(400).json({ error: "userId required" });
-      activities = await fetchRecentActivityForUser(userId, { limit: 50 });
+      activities = await fetchActivityForUser(userId, 50);
     } else {
-      // public
-      activities = await fetchRecentActivity({ limit: 20, publicOnly: true });
+      // public (if you want to filter by a "publicOnly" flag, add that in service)
+      activities = await fetchRecentActivity(20);
     }
 
     return res.json({ ok: true, scope, count: activities.length, activities });
