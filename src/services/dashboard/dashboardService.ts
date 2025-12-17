@@ -206,6 +206,20 @@ export function buildAvatarUrl(fileId?: string) {
   const base = APPWRITE_ENDPOINT.replace(/\/v1\/?$/, "");
   return `${base}/storage/buckets/${BUCKET_ID}/files/${fileId}/view?project=${APPWRITE_PROJECT_ID}`;
 }
+export async function getUserProfileByUserId(userId: string) {
+  if (!userId) throw new Error("userId is required");
+
+  try {
+    const res = await fetchDocumentsTables(DB_ID, USER_TABLE_ID);
+    const found = res.documents.find(
+      (d: any) => String(d.$id) === String(userId)
+    );
+    return found ?? null;
+  } catch (err: any) {
+    console.error("getUserProfileByUserId error:", err?.message ?? err);
+    return null;
+  }
+}
 
 export default {
   getAgentDashboardMetrics,

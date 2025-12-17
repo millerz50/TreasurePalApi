@@ -1,27 +1,27 @@
 import { Request, Response } from "express";
 import {
   getAgentDashboardMetrics,
-  getUserProfileByAccountId,
+  getUserProfileByUserId,   // <-- change to query by $id
   recordAgentMetrics,
 } from "../services/dashboard/dashboardService";
 
 /**
  * GET /api/dashboard/agent/:id
- * Returns computed dashboard metrics for the given agentId.
+ * Returns computed dashboard metrics for the given userId ($id).
  */
 export async function getAgentMetricsController(req: Request, res: Response) {
-  const agentId = req.params.id;
+  const userId = req.params.id; // treat this as $id
   try {
-    if (!agentId) return res.status(400).json({ error: "agentId required" });
+    if (!userId) return res.status(400).json({ error: "userId required" });
 
-    // Optionally enrich with profile data if available
-    const profile = await getUserProfileByAccountId(agentId).catch(() => null);
+    // Enrich with profile data by $id
+    const profile = await getUserProfileByUserId(userId).catch(() => null);
 
-    const metrics = await getAgentDashboardMetrics(agentId);
+    const metrics = await getAgentDashboardMetrics(userId);
 
     return res.json({
       ok: true,
-      agentId,
+      userId,
       profile: profile ? { id: profile.$id ?? profile.id, ...profile } : null,
       metrics,
     });
@@ -31,24 +31,21 @@ export async function getAgentMetricsController(req: Request, res: Response) {
   }
 }
 
+
 /**
  * POST /api/dashboard/agent/:id/record
  * Accepts an optional metrics payload in the body; if none provided, computes metrics then persists.
  */
-export async function recordAgentMetricsController(
-  req: Request,
-  res: Response
-) {
-  const agentId = req.params.id;
+export async function recordAgentMetricsController(req: Request, res: Response) {
+  const userId = req.params.id; // treat this as $id
   try {
-    if (!agentId) return res.status(400).json({ error: "agentId required" });
+    if (!userId) return res.status(400).json({ error: "userId required" });
 
-    // If client provided metrics, use them; otherwise compute fresh metrics
     const incomingMetrics = req.body?.metrics ?? null;
     const metricsToSave =
-      incomingMetrics ?? (await getAgentDashboardMetrics(agentId));
+      incomingMetrics ?? (await getAgentDashboardMetrics(userId));
 
-    const saved = await recordAgentMetrics(agentId, metricsToSave);
+    const saved = await recordAgentMetrics(userId, metricsToSave);
 
     return res.status(201).json({ ok: true, saved });
   } catch (err: any) {
@@ -56,3 +53,4 @@ export async function recordAgentMetricsController(
     return res.status(500).json({ error: "Failed to record agent metrics" });
   }
 }
+
