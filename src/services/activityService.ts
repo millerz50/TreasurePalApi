@@ -1,6 +1,7 @@
 // services/activity/activityService.ts
 import { ID, Query, TablesDB } from "node-appwrite";
-import { getClient, getEnv } from "../../src/services/lib/env";
+// activityService.ts
+import { getClient, getEnv } from "./lib/env";
 import { safeFormatActivity } from "./services/activity/activity.mapper";
 import { Activity, ActivityAction } from "./services/activity/activity.types";
 
