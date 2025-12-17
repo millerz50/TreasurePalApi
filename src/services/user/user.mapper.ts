@@ -32,7 +32,6 @@ export function toUserDocument(
     // ✅ SERVER-CONTROLLED FIELDS
     credits,
     lastLoginReward: new Date().toISOString(),
-    createdAt: new Date().toISOString(),
 
     agentId: payload.role === "agent" ? ID.unique() : null,
   };
