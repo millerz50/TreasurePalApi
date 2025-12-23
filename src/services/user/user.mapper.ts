@@ -1,36 +1,26 @@
-// user.mapper.ts
-import { ID } from "node-appwrite"; // ✅ REQUIRED
-import type { SignupPayload, UserRole } from "./user.types";
+import { UserDocumentInput } from "./user.types";
 
 export function toUserDocument(
-  payload: SignupPayload,
+  data: UserDocumentInput,
   accountId: string,
-  credits: number
+  signupCredits: number
 ) {
-  // 🔐 Enforce allowed roles at signup
-  const role: UserRole = payload.role === "agent" ? "agent" : "user";
-
   return {
     accountid: accountId,
-    email: payload.email.toLowerCase(),
 
-    firstName: payload.firstName,
-    surname: payload.surname,
+    email: data.email,
+    firstName: data.firstName,
+    surname: data.surname,
 
-    // 🔑 Role system
-    role,
-    roles: [role], // ✅ for guards
+    phone: data.phone,
+    country: data.country,
+    location: data.location,
+    dateOfBirth: data.dateOfBirth,
 
-    status: "Active",
+    roles: data.roles,
+    status: data.status,
 
-    phone: payload.phone ?? null,
-    country: payload.country ?? null,
-    location: payload.location ?? null,
-
-    credits,
-    lastLoginReward: new Date().toISOString(),
-
-    // Agent-only field
-    agentId: role === "agent" ? ID.unique() : null,
+    credits: signupCredits,
+    metadata: [],
   };
 }

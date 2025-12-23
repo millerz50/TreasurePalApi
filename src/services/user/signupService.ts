@@ -17,7 +17,7 @@ export async function signupUser(payload: SignupPayload) {
   const normalizedEmail = payload.email.toLowerCase().trim();
   const accountId = payload.accountid ?? ID.unique();
 
-  /* 1️⃣ Optional DB pre-check (soft) */
+  /* 1️⃣ Optional DB pre-check */
   const existing = await findByEmail(normalizedEmail).catch(() => null);
   if (existing) {
     const err: any = new Error("User already exists with this email");
@@ -33,25 +33,41 @@ export async function signupUser(payload: SignupPayload) {
     throw err;
   }
 
-  /* 3️⃣ Build DB document (server-enforced role) */
-  const document = toUserDocument(
-    {
-      ...payload,
-      email: normalizedEmail,
-      role: payload.role === "agent" ? "agent" : "user", // 🔒 enforce
-    },
-    accountId,
-    SIGNUP_BONUS_CREDITS
-  );
+  /* 3️⃣ Server-enforced roles */
+  const roles: ("user" | "agent")[] = ["user"];
 
-  /* 4️⃣ Create DB row (with rollback) */
+  if (payload.role === "agent") {
+    roles.push("agent");
+  }
+
+  /* 4️⃣ Build DB document */
+  const document = toUserDocument(
+  {
+    email: normalizedEmail,
+    firstName: payload.firstName,
+    surname: payload.surname,
+
+    phone: payload.phone,
+    country: payload.country,
+    location: payload.location,
+    dateOfBirth: payload.dateOfBirth,
+
+    roles,
+    status: payload.status ?? "Pending",
+  },
+  accountId,
+  SIGNUP_BONUS_CREDITS
+);
+
+
+  /* 5️⃣ Create DB row (with rollback) */
   let createdRow;
   try {
     createdRow = await createUserRow(document);
   } catch (err) {
     logError("signupUser.createRow", err);
 
-    // 🔥 Rollback auth user
+    // 🔥 Roll back auth user if DB write fails
     try {
       await deleteUserRowByAccountId(accountId);
     } catch {}
