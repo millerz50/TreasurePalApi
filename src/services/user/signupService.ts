@@ -16,18 +16,26 @@ const SIGNUP_BONUS_CREDITS = 40;
 
 /**
  * Allowed roles in the system
- * (users can hold multiple roles)
+ * (users may hold multiple roles, but signup is restricted)
  */
 type UserRole = "user" | "agent" | "admin";
 
 export async function signupUser(payload: SignupPayload) {
   logStep("START signupUser", { email: payload.email });
 
-  const normalizedEmail = payload.email?.toLowerCase().trim();
-  if (!normalizedEmail) {
+  /* =========================
+     0️⃣ VALIDATION
+  ========================= */
+
+  if (!payload.email) {
     throw new Error("Email is required");
   }
 
+  if (!payload.password) {
+    throw new Error("Password is required");
+  }
+
+  const normalizedEmail = payload.email.toLowerCase().trim();
   const accountId = payload.accountid ?? ID.unique();
 
   /* =========================
@@ -54,13 +62,14 @@ export async function signupUser(payload: SignupPayload) {
 
   /* =========================
      3️⃣ SERVER-ENFORCED ROLES
-     ✅ ALWAYS START AS USER
+     🔒 ALWAYS START AS USER
   ========================= */
 
   const roles: UserRole[] = ["user"];
 
   /* =========================
      4️⃣ BUILD DB DOCUMENT
+     (SCHEMA-SAFE)
   ========================= */
 
   const document = toUserDocument(
