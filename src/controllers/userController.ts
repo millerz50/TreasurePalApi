@@ -11,7 +11,7 @@ import {
   getUserById as svcGetUserById,
   listAgents as svcListAgents,
   listUsers as svcListUsers,
-  setRole as svcSetRole,
+  setRoles as svcSetRole,
   setStatus as svcSetStatus,
   updateUser as svcUpdateUser,
 } from "../services/user/userService";
