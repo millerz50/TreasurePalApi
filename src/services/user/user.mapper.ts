@@ -8,16 +8,18 @@ type UserDocument = {
   firstName: string;
   surname: string;
 
-  phone?: string;
+  phone?: string | null;
   country?: string;
-  location?: string;
-  dateOfBirth?: string;
+  location?: string | null;
+  dateOfBirth?: string | null;
 
   roles: UserRole[];
   status: UserStatus;
 
   credits: number;
-  createdAt: string;
+
+  // ❌ DO NOT define createdAt
+  // Appwrite provides $createdAt automatically
 };
 
 export function toUserDocument(
@@ -32,10 +34,10 @@ export function toUserDocument(
     firstName: data.firstName.trim(),
     surname: data.surname.trim(),
 
-    phone: data.phone,
+    phone: data.phone ?? null,
     country: data.country,
-    location: data.location,
-    dateOfBirth: data.dateOfBirth,
+    location: data.location ?? null,
+    dateOfBirth: data.dateOfBirth ?? null,
 
     // 🔒 SERVER SAFETY NETS
     roles:
@@ -46,6 +48,5 @@ export function toUserDocument(
     status: data.status ?? "Pending",
 
     credits: signupCredits,
-    createdAt: new Date().toISOString(),
   };
 }
