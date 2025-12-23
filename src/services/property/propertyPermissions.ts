@@ -5,7 +5,9 @@ export function buildPropertyPermissions(agentId: string) {
     Permission.read(Role.user(agentId)),
     Permission.update(Role.user(agentId)),
     Permission.delete(Role.user(agentId)),
-    Permission.read(Role.any()), // optional public read
+
+    Permission.read(Role.any()),
+
     Permission.update(Role.team("admins")),
     Permission.delete(Role.team("admins")),
   ];

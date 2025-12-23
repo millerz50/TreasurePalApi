@@ -29,12 +29,13 @@ export async function getPropertyById(id: string) {
   const row = await tablesDB.getRow(DB_ID, PROPERTIES_TABLE, id);
   return formatProperty(row);
 }
-
 export async function createProperty(
   payload: any,
   imageFiles?: Record<string, { buffer: Buffer; name: string }>
 ) {
+  // ✅ MULTI-ROLE SAFE
   await validateAgent(payload.agentId);
+
   const coords = parseCoordinates(payload.coordinates);
   const imageIds = await uploadPropertyImages(imageFiles);
 
@@ -50,14 +51,18 @@ export async function createProperty(
     country: payload.country || "",
     amenities: toCsv(payload.amenities),
     ...coords,
+
     agentId: String(payload.agentId),
+
     published: false,
     approvedBy: null,
     approvedAt: null,
+
     ...imageIds,
   };
 
   const permissions = buildPropertyPermissions(payload.agentId);
+
   const row = await tablesDB.createRow(
     DB_ID,
     PROPERTIES_TABLE,
@@ -65,6 +70,7 @@ export async function createProperty(
     record,
     permissions
   );
+
   return formatProperty(row);
 }
 
