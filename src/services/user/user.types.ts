@@ -1,6 +1,7 @@
 // user.types.ts
 
 export type UserRole = "user" | "agent" | "admin";
+
 export type UserStatus = "Not Verified" | "Pending" | "Active" | "Suspended";
 
 export type SignupPayload = {
@@ -17,8 +18,11 @@ export type SignupPayload = {
   location?: string;
   dateOfBirth?: string;
 
-  // 🔒 Signup can request role, but server enforces
-  role?: "user" | "agent";
+  // 🔒 Signup may request a role
+  requestedRole?: Exclude<UserRole, "admin">;
+
+  // 🔐 FINAL roles (server assigns)
+  roles?: UserRole[];
 
   status?: UserStatus;
 
