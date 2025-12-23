@@ -15,6 +15,10 @@ function db() {
 export async function createUserRow(payload: Record<string, any>) {
   const userId = payload.accountid; // MUST match Appwrite Auth userId
 
+  if (!userId) {
+    throw new Error("accountid is required to create user document");
+  }
+
   return db().createDocument(DB_ID, USERS_COLLECTION, ID.unique(), payload, [
     // owner + admin can read
     Permission.read(Role.user(userId)),
@@ -63,15 +67,21 @@ export async function getUserById(documentId: string) {
    UPDATE
 ============================ */
 
-export async function updateUser(documentId: string, updates: any) {
+export async function updateUser(
+  documentId: string,
+  updates: Record<string, any>
+) {
   return db().updateDocument(DB_ID, USERS_COLLECTION, documentId, updates);
 }
 
-export async function setRole(
+/**
+ * Replace all roles (admin-only operation)
+ */
+export async function setRoles(
   documentId: string,
-  role: "user" | "agent" | "admin"
+  roles: ("user" | "agent" | "admin")[]
 ) {
-  return updateUser(documentId, { role });
+  return updateUser(documentId, { roles });
 }
 
 export async function setStatus(
@@ -104,10 +114,14 @@ export async function deleteUserRowByAccountId(accountid: string) {
    LIST
 ============================ */
 
+/**
+ * Users that contain "agent" in roles[]
+ */
 export async function listAgents() {
   const res = await db().listDocuments(DB_ID, USERS_COLLECTION, [
-    Query.equal("role", "agent"),
+    Query.contains("roles", "agent"),
   ]);
+
   return res.documents;
 }
 
@@ -115,6 +129,7 @@ export async function listUsers(limit = 100) {
   const res = await db().listDocuments(DB_ID, USERS_COLLECTION, [
     Query.limit(limit),
   ]);
+
   return res.documents;
 }
 
