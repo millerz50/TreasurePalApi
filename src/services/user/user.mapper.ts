@@ -21,6 +21,5 @@ export function toUserDocument(
     status: data.status,
 
     credits: signupCredits,
-    metadata: [],
   };
 }
