@@ -10,15 +10,24 @@ export type UserStatus = "Not Verified" | "Pending" | "Active" | "Suspended";
 
 /* --------------------
    Signup API Payload
-   (Auth + Validation)
+   (Client → Server)
 -------------------- */
 
 export type SignupPayload = {
+  /**
+   * Optional — used for migrations or system-created users
+   */
   accountid?: string;
 
+  /**
+   * Auth credentials
+   */
   email: string;
   password: string;
 
+  /**
+   * Profile info
+   */
   firstName: string;
   surname: string;
 
@@ -27,18 +36,16 @@ export type SignupPayload = {
   location?: string;
   dateOfBirth?: string;
 
-  // Signup may request role, server enforces
-  role?: "user" | "agent";
-
-  status?: UserStatus;
-
-  // Appwrite Auth only
+  /**
+   * Appwrite Auth only (OTP / phone verification)
+   */
   authPhone?: string;
 };
 
 /* --------------------
    DB Document Input
-   (NO password)
+   (Server → Database)
+   🚫 NO password here
 -------------------- */
 
 export type UserDocumentInput = {
@@ -51,6 +58,14 @@ export type UserDocumentInput = {
   location?: string;
   dateOfBirth?: string;
 
+  /**
+   * Roles are additive
+   * Example: ["user", "agent"]
+   */
   roles: UserRole[];
+
+  /**
+   * Controlled by server/admin only
+   */
   status: UserStatus;
 };

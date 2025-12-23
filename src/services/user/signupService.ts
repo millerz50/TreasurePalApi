@@ -9,12 +9,25 @@ import { toUserDocument } from "./user.mapper";
 import type { SignupPayload } from "./user.types";
 import { createUserRow, deleteUserRowByAccountId } from "./userService";
 
+/**
+ * System constants
+ */
 const SIGNUP_BONUS_CREDITS = 40;
+
+/**
+ * Allowed roles in the system
+ * (users can hold multiple roles)
+ */
+type UserRole = "user" | "agent" | "admin";
 
 export async function signupUser(payload: SignupPayload) {
   logStep("START signupUser", { email: payload.email });
 
-  const normalizedEmail = payload.email.toLowerCase().trim();
+  const normalizedEmail = payload.email?.toLowerCase().trim();
+  if (!normalizedEmail) {
+    throw new Error("Email is required");
+  }
+
   const accountId = payload.accountid ?? ID.unique();
 
   /* =========================
@@ -41,10 +54,10 @@ export async function signupUser(payload: SignupPayload) {
 
   /* =========================
      3️⃣ SERVER-ENFORCED ROLES
-     🚫 NO AGENT AT SIGNUP
+     ✅ ALWAYS START AS USER
   ========================= */
 
-  const roles: "user"[] = ["user"];
+  const roles: UserRole[] = ["user"];
 
   /* =========================
      4️⃣ BUILD DB DOCUMENT
@@ -62,7 +75,7 @@ export async function signupUser(payload: SignupPayload) {
       dateOfBirth: payload.dateOfBirth,
 
       roles,
-      status: "Pending", // always pending until admin action
+      status: "Pending", // admin must approve promotions
     },
     accountId,
     SIGNUP_BONUS_CREDITS

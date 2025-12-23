@@ -4,6 +4,9 @@ import { getClient, getEnv } from "../../services/lib/env";
 const DB_ID = getEnv("APPWRITE_DATABASE_ID")!;
 const USERS_COLLECTION = "users";
 
+type UserRole = "user" | "agent" | "admin";
+type UserStatus = "Not Verified" | "Pending" | "Active" | "Suspended";
+
 function db() {
   return new Databases(getClient());
 }
@@ -13,7 +16,7 @@ function db() {
 ============================ */
 
 export async function createUserRow(payload: Record<string, any>) {
-  const userId = payload.accountid; // MUST match Appwrite Auth userId
+  const userId = payload.accountid;
 
   if (!userId) {
     throw new Error("accountid is required to create user document");
@@ -75,30 +78,34 @@ export async function updateUser(
 }
 
 /**
- * 🔒 Replace all roles (ADMIN ONLY)
+ * 🔒 ADMIN ONLY — replaces all roles
+ * (use sparingly)
  */
-export async function setRoles(
-  documentId: string,
-  roles: ("user" | "agent" | "admin")[]
-) {
-  return updateUser(documentId, { roles });
+export async function setRoles(documentId: string, roles: UserRole[]) {
+  if (!roles.includes("user")) {
+    roles.push("user"); // user is mandatory
+  }
+
+  return updateUser(documentId, {
+    roles: Array.from(new Set(roles)),
+  });
 }
 
 /**
- * 🔑 OPTION C — APPROVE AGENT
- * Adds agent role without removing existing roles
+ * ✅ OPTION C — APPROVE AGENT
+ * Adds agent role, keeps others
  */
 export async function approveAgent(documentId: string) {
   const user = await getUserById(documentId);
   if (!user) throw new Error("User not found");
 
-  const existingRoles: string[] = Array.isArray(user.roles) ? user.roles : [];
+  const existingRoles: UserRole[] = Array.isArray(user.roles)
+    ? user.roles
+    : ["user"];
 
-  const roles = Array.from(new Set([...existingRoles, "agent"])) as (
-    | "user"
-    | "agent"
-    | "admin"
-  )[];
+  const roles = Array.from(
+    new Set<UserRole>(["user", ...existingRoles, "agent"])
+  );
 
   return updateUser(documentId, {
     roles,
@@ -107,10 +114,25 @@ export async function approveAgent(documentId: string) {
   });
 }
 
-export async function setStatus(
-  documentId: string,
-  status: "Not Verified" | "Pending" | "Active" | "Suspended"
-) {
+/**
+ * ✅ Promote to admin (optional helper)
+ */
+export async function promoteToAdmin(documentId: string) {
+  const user = await getUserById(documentId);
+  if (!user) throw new Error("User not found");
+
+  const existingRoles: UserRole[] = Array.isArray(user.roles)
+    ? user.roles
+    : ["user"];
+
+  const roles = Array.from(
+    new Set<UserRole>(["user", ...existingRoles, "admin"])
+  );
+
+  return updateUser(documentId, { roles });
+}
+
+export async function setStatus(documentId: string, status: UserStatus) {
   return updateUser(documentId, { status });
 }
 
@@ -137,9 +159,6 @@ export async function deleteUserRowByAccountId(accountid: string) {
    LIST
 ============================ */
 
-/**
- * Users that contain "agent" in roles[]
- */
 export async function listAgents() {
   const res = await db().listDocuments(DB_ID, USERS_COLLECTION, [
     Query.contains("roles", "agent"),
@@ -177,8 +196,10 @@ export async function addCredits(
   const user = await getUserById(documentId);
   if (!user) throw new Error("User not found");
 
+  const current = typeof user.credits === "number" ? user.credits : 0;
+
   return updateUser(documentId, {
-    credits: user.credits + amount,
+    credits: current + amount,
     lastCreditAction: {
       type: "add",
       amount,
@@ -198,12 +219,11 @@ export async function deductCredits(
   const user = await getUserById(documentId);
   if (!user) throw new Error("User not found");
 
-  if (user.credits < amount) {
-    throw new Error("Insufficient credits");
-  }
+  const current = typeof user.credits === "number" ? user.credits : 0;
+  if (current < amount) throw new Error("Insufficient credits");
 
   return updateUser(documentId, {
-    credits: user.credits - amount,
+    credits: current - amount,
     lastCreditAction: {
       type: "deduct",
       amount,
