@@ -1,6 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import express from "express";
+import sdk, { Client } from "node-appwrite";
+
 import {
+  approveAgent,
   deleteUser,
   editUser,
   getAgents,
@@ -8,7 +11,7 @@ import {
   getUserById,
   getUserProfile,
   loginUser,
-  setRole,
+  setRoles,
   setStatus,
   signup,
   updateUser,
@@ -21,8 +24,6 @@ import {
 } from "../controllers/creditsController";
 
 import { authMiddleware } from "../middleware/authMiddleware";
-
-import sdk, { Client } from "node-appwrite";
 
 const router = express.Router();
 
@@ -65,7 +66,7 @@ router.post("/verify-phone", async (req, res) => {
 });
 
 /* ======================================================
-   AUTH ROUTES
+   AUTH
 ====================================================== */
 router.post("/signup", signup);
 router.post("/login", loginUser);
@@ -87,9 +88,25 @@ router.patch("/:id", authMiddleware, editUser);
 router.delete("/:id", authMiddleware, deleteUser);
 
 /* ======================================================
-   ADMIN
+   ADMIN — ROLE & STATUS
 ====================================================== */
-router.patch("/:id/role", authMiddleware, setRole);
+
+/**
+ * Replace ALL roles (admin-only)
+ * Body: { roles: ["user","agent"] }
+ */
+router.patch("/:id/roles", authMiddleware, setRoles);
+
+/**
+ * Approve Agent (Option C)
+ * Admin presses “Approve Agent”
+ */
+router.post("/:id/approve-agent", authMiddleware, approveAgent);
+
+/**
+ * Update user status
+ * Body: { status: "Active" | "Pending" | "Suspended" }
+ */
 router.patch("/:id/status", authMiddleware, setStatus);
 
 /* ======================================================

@@ -17,7 +17,10 @@ export async function signupUser(payload: SignupPayload) {
   const normalizedEmail = payload.email.toLowerCase().trim();
   const accountId = payload.accountid ?? ID.unique();
 
-  /* 1️⃣ Optional DB pre-check */
+  /* =========================
+     1️⃣ PRE-CHECK
+  ========================= */
+
   const existing = await findByEmail(normalizedEmail).catch(() => null);
   if (existing) {
     const err: any = new Error("User already exists with this email");
@@ -25,7 +28,10 @@ export async function signupUser(payload: SignupPayload) {
     throw err;
   }
 
-  /* 2️⃣ Create Appwrite Auth user */
+  /* =========================
+     2️⃣ CREATE AUTH USER
+  ========================= */
+
   try {
     await createAuthUser(accountId, normalizedEmail, payload.password);
   } catch (err) {
@@ -33,34 +39,40 @@ export async function signupUser(payload: SignupPayload) {
     throw err;
   }
 
-  /* 3️⃣ Server-enforced roles */
-  const roles: ("user" | "agent")[] = ["user"];
+  /* =========================
+     3️⃣ SERVER-ENFORCED ROLES
+     🚫 NO AGENT AT SIGNUP
+  ========================= */
 
-  if (payload.role === "agent") {
-    roles.push("agent");
-  }
+  const roles: "user"[] = ["user"];
 
-  /* 4️⃣ Build DB document */
+  /* =========================
+     4️⃣ BUILD DB DOCUMENT
+  ========================= */
+
   const document = toUserDocument(
-  {
-    email: normalizedEmail,
-    firstName: payload.firstName,
-    surname: payload.surname,
+    {
+      email: normalizedEmail,
+      firstName: payload.firstName,
+      surname: payload.surname,
 
-    phone: payload.phone,
-    country: payload.country,
-    location: payload.location,
-    dateOfBirth: payload.dateOfBirth,
+      phone: payload.phone,
+      country: payload.country,
+      location: payload.location,
+      dateOfBirth: payload.dateOfBirth,
 
-    roles,
-    status: payload.status ?? "Pending",
-  },
-  accountId,
-  SIGNUP_BONUS_CREDITS
-);
+      roles,
+      status: "Pending", // always pending until admin action
+    },
+    accountId,
+    SIGNUP_BONUS_CREDITS
+  );
 
+  /* =========================
+     5️⃣ CREATE DB ROW
+     (WITH ROLLBACK)
+  ========================= */
 
-  /* 5️⃣ Create DB row (with rollback) */
   let createdRow;
   try {
     createdRow = await createUserRow(document);
@@ -74,6 +86,10 @@ export async function signupUser(payload: SignupPayload) {
 
     throw err;
   }
+
+  /* =========================
+     6️⃣ RETURN SAFE RESPONSE
+  ========================= */
 
   return {
     status: "SUCCESS",

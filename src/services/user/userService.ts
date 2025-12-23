@@ -75,13 +75,36 @@ export async function updateUser(
 }
 
 /**
- * Replace all roles (admin-only operation)
+ * 🔒 Replace all roles (ADMIN ONLY)
  */
 export async function setRoles(
   documentId: string,
   roles: ("user" | "agent" | "admin")[]
 ) {
   return updateUser(documentId, { roles });
+}
+
+/**
+ * 🔑 OPTION C — APPROVE AGENT
+ * Adds agent role without removing existing roles
+ */
+export async function approveAgent(documentId: string) {
+  const user = await getUserById(documentId);
+  if (!user) throw new Error("User not found");
+
+  const existingRoles: string[] = Array.isArray(user.roles) ? user.roles : [];
+
+  const roles = Array.from(new Set([...existingRoles, "agent"])) as (
+    | "user"
+    | "agent"
+    | "admin"
+  )[];
+
+  return updateUser(documentId, {
+    roles,
+    status: "Active",
+    approvedAt: new Date().toISOString(),
+  });
 }
 
 export async function setStatus(
@@ -154,11 +177,8 @@ export async function addCredits(
   const user = await getUserById(documentId);
   if (!user) throw new Error("User not found");
 
-  const updatedCredits =
-    (typeof user.credits === "number" ? user.credits : 0) + amount;
-
   return updateUser(documentId, {
-    credits: updatedCredits,
+    credits: user.credits + amount,
     lastCreditAction: {
       type: "add",
       amount,
@@ -178,11 +198,12 @@ export async function deductCredits(
   const user = await getUserById(documentId);
   if (!user) throw new Error("User not found");
 
-  const current = typeof user.credits === "number" ? user.credits : 0;
-  if (current < amount) throw new Error("Insufficient credits");
+  if (user.credits < amount) {
+    throw new Error("Insufficient credits");
+  }
 
   return updateUser(documentId, {
-    credits: current - amount,
+    credits: user.credits - amount,
     lastCreditAction: {
       type: "deduct",
       amount,

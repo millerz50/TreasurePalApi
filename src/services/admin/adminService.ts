@@ -1,14 +1,28 @@
 // server/services/adminService.ts
-import { hashPassword } from "../../lib/utils/auth"; // adjust path if needed
+
+import { hashPassword } from "../../lib/utils/auth";
 import {
   findByEmail,
   getUserById,
-  createUserRow as svcCreateUser, // ✅ CORRECT
+  listUsers,
+  createUserRow as svcCreateUser,
   updateUser as svcUpdateUser,
 } from "../user/userService";
 
+/* ----------------------------------
+   CONSTANTS
+----------------------------------- */
 const ALLOWED_ROLES = new Set(["user", "agent", "admin"]);
+const ALLOWED_STATUS = new Set([
+  "Not Verified",
+  "Pending",
+  "Active",
+  "Suspended",
+]);
 
+/* ----------------------------------
+   CREATE ADMIN ACCOUNT
+----------------------------------- */
 export async function createAdminAccount(payload: {
   firstName: string;
   surname: string;
@@ -16,42 +30,45 @@ export async function createAdminAccount(payload: {
   password?: string;
   accountId?: string | null;
 }) {
-  const email = String(payload.email).toLowerCase();
+  const email = payload.email.toLowerCase();
 
-  // Prevent duplicate
+  // Prevent duplicate users
   const existing = await findByEmail(email);
   if (existing) {
     throw new Error("A user already exists with that email");
   }
 
-  // Hash password only if you plan to store it in users collection.
-  // Prefer creating Appwrite Account separately and store only accountId in users doc.
-  let hashedPassword: string | undefined = undefined;
+  // Optional password hashing (only if you store passwords in DB)
+  let hashedPassword: string | undefined;
   if (payload.password) {
     hashedPassword = await hashPassword(payload.password);
   }
 
-  const userPayload: any = {
+  const userPayload = {
     accountId: payload.accountId ?? null,
     email,
     firstName: payload.firstName,
     surname: payload.surname,
-    role: "admin",
-    status: "active",
-    emailVerified: false,
-  };
 
-  if (hashedPassword) userPayload.password = hashedPassword;
+    // ✅ CORRECT SYSTEM
+    roles: ["admin"],
+    status: "Active" as const,
+    emailVerified: false,
+
+    ...(hashedPassword ? { password: hashedPassword } : {}),
+  };
 
   const user = await svcCreateUser(userPayload);
   return user;
 }
 
-/**
- * Promote or change a user's role.
- * Only call from admin-protected endpoints.
- */
-export async function setUserRole(targetUserId: string, role: string) {
+/* ----------------------------------
+   SET USER ROLE (ADMIN ONLY)
+----------------------------------- */
+export async function setUserRole(
+  targetUserId: string,
+  role: "user" | "agent" | "admin"
+) {
   if (!ALLOWED_ROLES.has(role)) {
     throw new Error(
       `Invalid role. Allowed roles: ${Array.from(ALLOWED_ROLES).join(", ")}`
@@ -61,27 +78,53 @@ export async function setUserRole(targetUserId: string, role: string) {
   const existing = await getUserById(targetUserId);
   if (!existing) throw new Error("User not found");
 
-  // If demoting the last admin, you might want an extra guard (not implemented here)
-  const updated = await svcUpdateUser(targetUserId, { role });
+  const currentRoles: string[] = Array.isArray(existing.roles)
+    ? existing.roles
+    : [];
+
+  // 🛑 Prevent removing the last admin
+  if (role !== "admin" && currentRoles.includes("admin")) {
+    const allUsers = await listUsers();
+    const adminCount = allUsers.filter(
+      (u) => Array.isArray(u.roles) && u.roles.includes("admin")
+    ).length;
+
+    if (adminCount <= 1) {
+      throw new Error("Cannot remove the last admin");
+    }
+  }
+
+  // ✅ Replace roles with single primary role
+  const updated = await svcUpdateUser(targetUserId, {
+    roles: [role],
+  });
+
   return updated;
 }
 
-/**
- * Set user status (active, pending, suspended).
- * Only admins should call this via controller/middleware.
- */
-export async function setUserStatus(targetUserId: string, status: string) {
-  const allowed = new Set(["active", "pending", "suspended"]);
-  if (!allowed.has(status))
+/* ----------------------------------
+   SET USER STATUS (ADMIN ONLY)
+----------------------------------- */
+export async function setUserStatus(
+  targetUserId: string,
+  status: "Not Verified" | "Pending" | "Active" | "Suspended"
+) {
+  if (!ALLOWED_STATUS.has(status)) {
     throw new Error(
-      `Invalid status. Allowed: ${Array.from(allowed).join(", ")}`
+      `Invalid status. Allowed: ${Array.from(ALLOWED_STATUS).join(", ")}`
     );
+  }
+
   const existing = await getUserById(targetUserId);
   if (!existing) throw new Error("User not found");
+
   const updated = await svcUpdateUser(targetUserId, { status });
   return updated;
 }
 
+/* ----------------------------------
+   EXPORT
+----------------------------------- */
 export default {
   createAdminAccount,
   setUserRole,

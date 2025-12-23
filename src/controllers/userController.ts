@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Request, Response } from "express";
 import sdk from "node-appwrite";
-import path from "path";
 
 import { signupUser } from "../services/user/signupService";
 import {
@@ -11,35 +10,16 @@ import {
   getUserById as svcGetUserById,
   listAgents as svcListAgents,
   listUsers as svcListUsers,
-  setRoles as svcSetRole,
+  setRoles as svcSetRoles,
   setStatus as svcSetStatus,
   updateUser as svcUpdateUser,
 } from "../services/user/userService";
 
 import { logError } from "./utils/logger";
 
-const DEBUG = process.env.DEBUG === "true";
-const dbFile = path.join(__dirname, "phones.json");
-
 /* =========================
-   Utils
+   LOGIN
 ========================= */
-
-function logStep(step: string, data?: any) {
-  if (DEBUG) console.log(`=== STEP: ${step} ===`, data ?? "");
-}
-
-function sanitizePhone(value: unknown): string | undefined {
-  if (!value) return undefined;
-  const s = String(value).trim();
-  const normalized = s.replace(/^[\uFF0B]/, "+").replace(/[ \-\(\)]/g, "");
-  return /^\+\d{1,15}$/.test(normalized) ? normalized : undefined;
-}
-
-/* =========================
-   LOGIN  ✅ REQUIRED BY ROUTES
-========================= */
-
 export async function loginUser(req: Request, res: Response) {
   try {
     const { email, password } = req.body;
@@ -66,9 +46,8 @@ export async function loginUser(req: Request, res: Response) {
 }
 
 /* =========================
-   SIGNUP
+   SIGNUP (DEFAULT USER)
 ========================= */
-
 export async function signup(req: Request, res: Response) {
   try {
     const { email, password, firstName, surname } = req.body;
@@ -83,7 +62,6 @@ export async function signup(req: Request, res: Response) {
     const result = await signupUser({
       ...req.body,
       email: normalizedEmail,
-      phone: sanitizePhone(req.body.phone),
     });
 
     res.status(201).json({ profile: result.profile });
@@ -96,7 +74,6 @@ export async function signup(req: Request, res: Response) {
 /* =========================
    PROFILE
 ========================= */
-
 export async function getUserProfile(req: Request, res: Response) {
   const accountId = (req as any).accountId;
   if (!accountId) return res.status(401).json({ error: "Unauthorized" });
@@ -108,9 +85,8 @@ export async function getUserProfile(req: Request, res: Response) {
 }
 
 /* =========================
-   UPDATE (PUT) ✅ REQUIRED
+   UPDATE
 ========================= */
-
 export async function updateUser(req: Request, res: Response) {
   try {
     const updated = await svcUpdateUser(req.params.id, req.body);
@@ -120,10 +96,6 @@ export async function updateUser(req: Request, res: Response) {
     res.status(400).json({ error: "Update failed" });
   }
 }
-
-/* =========================
-   EDIT (PATCH)
-========================= */
 
 export async function editUser(req: Request, res: Response) {
   try {
@@ -137,16 +109,14 @@ export async function editUser(req: Request, res: Response) {
 /* =========================
    DELETE
 ========================= */
-
 export async function deleteUser(req: Request, res: Response) {
   await svcDeleteUser(req.params.id);
   res.status(204).send();
 }
 
 /* =========================
-   ADMIN
+   ADMIN — USERS
 ========================= */
-
 export async function getAllUsers(_: Request, res: Response) {
   res.json(await svcListUsers());
 }
@@ -157,14 +127,66 @@ export async function getUserById(req: Request, res: Response) {
   res.json(user);
 }
 
-export async function setRole(req: Request, res: Response) {
-  res.json(await svcSetRole(req.params.id, req.body.role));
+/* =========================
+   ADMIN — ROLE MANAGEMENT
+========================= */
+
+/**
+ * Replace roles completely
+ * PATCH /users/:id/role
+ */
+export async function setRoles(req: Request, res: Response) {
+  const { roles } = req.body;
+
+  if (!Array.isArray(roles)) {
+    return res.status(400).json({ error: "roles must be an array" });
+  }
+
+  const allowed = ["user", "agent", "admin"];
+  if (!roles.every((r) => allowed.includes(r))) {
+    return res.status(400).json({ error: "Invalid role supplied" });
+  }
+
+  const updated = await svcSetRoles(req.params.id, roles);
+  res.json(updated);
 }
 
+/**
+ * ✅ OPTION C — APPROVE AGENT
+ * PATCH /users/:id/approve-agent
+ */
+export async function approveAgent(req: Request, res: Response) {
+  const userId = req.params.id;
+
+  const user = await svcGetUserById(userId);
+  if (!user) return res.status(404).json({ error: "User not found" });
+
+  const updated = await svcUpdateUser(userId, {
+    roles: ["user", "agent"],
+    status: "Active",
+  });
+
+  res.json({
+    message: "Agent approved successfully",
+    user: updated,
+  });
+}
+
+/* =========================
+   ADMIN — STATUS
+========================= */
 export async function setStatus(req: Request, res: Response) {
+  const allowed = ["Not Verified", "Pending", "Active", "Suspended"];
+  if (!allowed.includes(req.body.status)) {
+    return res.status(400).json({ error: "Invalid status" });
+  }
+
   res.json(await svcSetStatus(req.params.id, req.body.status));
 }
 
+/* =========================
+   AGENTS
+========================= */
 export async function getAgents(_: Request, res: Response) {
   res.json(await svcListAgents());
 }
