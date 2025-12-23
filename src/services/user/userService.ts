@@ -1,129 +1,178 @@
-import { ID, Permission, Query, Role, TablesDB } from "node-appwrite";
+import { Databases, ID, Permission, Query, Role } from "node-appwrite";
 import { getClient, getEnv } from "../../services/lib/env";
-import { UserRow, safeFormat } from "../../services/lib/models/user";
 
-import { findByEmail, getUserByAccountId, getUserById } from "./gettersService";
+const DB_ID = getEnv("APPWRITE_DATABASE_ID")!;
+const USERS_COLLECTION = "users";
 
-const DB_ID = getEnv("APPWRITE_DATABASE_ID") ?? "";
-const USERS_TABLE = getEnv("APPWRITE_USERTABLE_ID") || "user";
-
-function getTablesDB(): TablesDB {
-  return new TablesDB(getClient());
+function db() {
+  return new Databases(getClient());
 }
 
 /* ============================
-   DB helpers
+   CREATE
 ============================ */
 
 export async function createUserRow(payload: Record<string, any>) {
-  return getTablesDB().createRow(DB_ID, USERS_TABLE, ID.unique(), payload, [
-    Permission.read(Role.any()),
-    Permission.update(Role.any()),
-    Permission.delete(Role.any()),
+  const userId = payload.accountid; // MUST match Appwrite Auth userId
+
+  return db().createDocument(DB_ID, USERS_COLLECTION, ID.unique(), payload, [
+    // owner + admin can read
+    Permission.read(Role.user(userId)),
+    Permission.read(Role.team("admin")),
+
+    // owner + admin can update
+    Permission.update(Role.user(userId)),
+    Permission.update(Role.team("admin")),
+
+    // only admin can delete
+    Permission.delete(Role.team("admin")),
   ]);
 }
 
-/** Alias expected by controllers */
-export const createUser = createUserRow;
-
-export async function updateUser(userId: string, updates: Partial<UserRow>) {
-  return getTablesDB().updateRow(DB_ID, USERS_TABLE, userId, updates);
-}
-
-export async function deleteUser(userId: string) {
-  return getTablesDB().deleteRow(DB_ID, USERS_TABLE, userId);
-}
-
 /* ============================
-   Credits helpers (NEW)
+   READ
 ============================ */
 
-/** Get current credit balance safely */
-export async function getCredits(userId: string): Promise<number> {
-  const user = await getUserById(userId);
-  return user?.credits ?? 0;
+export async function findByEmail(email: string) {
+  const res = await db().listDocuments(DB_ID, USERS_COLLECTION, [
+    Query.equal("email", email.toLowerCase()),
+    Query.limit(1),
+  ]);
+
+  return res.total > 0 ? res.documents[0] : null;
 }
 
-/** Add credits (signup bonus, daily login, admin reward) */
-export async function addCredits(
-  userId: string,
-  amount: number,
-  reason?: string
-) {
-  if (amount <= 0) return;
+export async function getUserByAccountId(accountid: string) {
+  const res = await db().listDocuments(DB_ID, USERS_COLLECTION, [
+    Query.equal("accountid", accountid),
+    Query.limit(1),
+  ]);
 
-  const current = await getCredits(userId);
-
-  return updateUser(userId, {
-    credits: current + amount,
-    lastCreditAction: reason ?? "CREDIT_ADDED",
-  });
+  return res.total > 0 ? res.documents[0] : null;
 }
 
-/** Deduct credits safely (posting properties, promotions) */
-export async function deductCredits(
-  userId: string,
-  amount: number,
-  reason?: string
-) {
-  if (amount <= 0) return;
-
-  const current = await getCredits(userId);
-
-  if (current < amount) {
-    const err: any = new Error("Insufficient credits");
-    err.status = 402;
-    throw err;
+export async function getUserById(documentId: string) {
+  try {
+    return await db().getDocument(DB_ID, USERS_COLLECTION, documentId);
+  } catch {
+    return null;
   }
-
-  return updateUser(userId, {
-    credits: current - amount,
-    lastCreditAction: reason ?? "CREDIT_DEDUCTED",
-  });
-}
-
-/** Spend credits with enforcement (recommended) */
-export async function spendCredits(
-  userId: string,
-  amount: number,
-  reason: string
-) {
-  await deductCredits(userId, amount, reason);
-  return true;
 }
 
 /* ============================
-   Admin helpers
+   UPDATE
 ============================ */
 
-export async function setRole(userId: string, role: string) {
-  return updateUser(userId, { role });
+export async function updateUser(documentId: string, updates: any) {
+  return db().updateDocument(DB_ID, USERS_COLLECTION, documentId, updates);
 }
 
-export async function setStatus(userId: string, status: UserRow["status"]) {
-  return updateUser(userId, { status });
+export async function setRole(
+  documentId: string,
+  role: "user" | "agent" | "admin"
+) {
+  return updateUser(documentId, { role });
+}
+
+export async function setStatus(
+  documentId: string,
+  status: "Not Verified" | "Pending" | "Active" | "Suspended"
+) {
+  return updateUser(documentId, { status });
 }
 
 /* ============================
-   Queries
+   DELETE
+============================ */
+
+export async function deleteUser(documentId: string) {
+  return db().deleteDocument(DB_ID, USERS_COLLECTION, documentId);
+}
+
+export async function deleteUserRowByAccountId(accountid: string) {
+  const res = await db().listDocuments(DB_ID, USERS_COLLECTION, [
+    Query.equal("accountid", accountid),
+    Query.limit(1),
+  ]);
+
+  if (res.total === 0) return null;
+
+  return deleteUser(res.documents[0].$id);
+}
+
+/* ============================
+   LIST
 ============================ */
 
 export async function listAgents() {
-  const res = await getTablesDB().listRows(DB_ID, USERS_TABLE, [
+  const res = await db().listDocuments(DB_ID, USERS_COLLECTION, [
     Query.equal("role", "agent"),
   ]);
-  return res.rows.map(safeFormat);
+  return res.documents;
 }
 
 export async function listUsers(limit = 100) {
-  const res = await getTablesDB().listRows(DB_ID, USERS_TABLE, [
+  const res = await db().listDocuments(DB_ID, USERS_COLLECTION, [
     Query.limit(limit),
   ]);
-  return res.rows.map(safeFormat);
+  return res.documents;
 }
 
 /* ============================
-   Re-exports (IMPORTANT)
+   CREDITS
 ============================ */
 
-export { findByEmail, getUserByAccountId, getUserById };
+export async function getCredits(documentId: string): Promise<number> {
+  const user = await getUserById(documentId);
+  if (!user) throw new Error("User not found");
+
+  return typeof user.credits === "number" ? user.credits : 0;
+}
+
+export async function addCredits(
+  documentId: string,
+  amount: number,
+  reason = "manual"
+) {
+  if (amount <= 0) throw new Error("Amount must be positive");
+
+  const user = await getUserById(documentId);
+  if (!user) throw new Error("User not found");
+
+  const updatedCredits =
+    (typeof user.credits === "number" ? user.credits : 0) + amount;
+
+  return updateUser(documentId, {
+    credits: updatedCredits,
+    lastCreditAction: {
+      type: "add",
+      amount,
+      reason,
+      at: new Date().toISOString(),
+    },
+  });
+}
+
+export async function deductCredits(
+  documentId: string,
+  amount: number,
+  reason = "usage"
+) {
+  if (amount <= 0) throw new Error("Amount must be positive");
+
+  const user = await getUserById(documentId);
+  if (!user) throw new Error("User not found");
+
+  const current = typeof user.credits === "number" ? user.credits : 0;
+  if (current < amount) throw new Error("Insufficient credits");
+
+  return updateUser(documentId, {
+    credits: current - amount,
+    lastCreditAction: {
+      type: "deduct",
+      amount,
+      reason,
+      at: new Date().toISOString(),
+    },
+  });
+}

@@ -3,7 +3,7 @@ import { hashPassword } from "../../lib/utils/auth"; // adjust path if needed
 import {
   findByEmail,
   getUserById,
-  createUser as svcCreateUser,
+  createUserRow as svcCreateUser, // ✅ CORRECT
   updateUser as svcUpdateUser,
 } from "../user/userService";
 

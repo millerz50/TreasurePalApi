@@ -1,13 +1,13 @@
-import bcrypt from "bcryptjs";
+// signupUser.ts
 import { ID } from "node-appwrite";
 import { logError, logStep } from "../../services/lib/logger";
-import { safeFormat } from "../../services/lib/models/user";
 
+import { safeFormat } from "../../services/lib/models/user";
 import { createAuthUser } from "./authService";
 import { findByEmail } from "./gettersService";
 import { toUserDocument } from "./user.mapper";
 import type { SignupPayload } from "./user.types";
-import { createUserRow } from "./userService";
+import { createUserRow, deleteUserRowByAccountId } from "./userService";
 
 const SIGNUP_BONUS_CREDITS = 40;
 
@@ -17,9 +17,7 @@ export async function signupUser(payload: SignupPayload) {
   const normalizedEmail = payload.email.toLowerCase().trim();
   const accountId = payload.accountid ?? ID.unique();
 
-  /* ----------------------------------
-     1️⃣ Check existing user
-  ----------------------------------- */
+  /* 1️⃣ Optional DB pre-check (soft) */
   const existing = await findByEmail(normalizedEmail).catch(() => null);
   if (existing) {
     const err: any = new Error("User already exists with this email");
@@ -27,64 +25,43 @@ export async function signupUser(payload: SignupPayload) {
     throw err;
   }
 
-  /* ----------------------------------
-     2️⃣ Create Appwrite Auth user
-  ----------------------------------- */
-  let authUser;
+  /* 2️⃣ Create Appwrite Auth user */
   try {
-    authUser = await createAuthUser(
-      accountId,
-      normalizedEmail,
-      payload.password
-    );
-
-    if (
-      payload.authPhone &&
-      typeof (authUser as any).updatePhone === "function"
-    ) {
-      await (authUser as any).updatePhone(payload.authPhone);
-    }
+    await createAuthUser(accountId, normalizedEmail, payload.password);
   } catch (err) {
     logError("signupUser.authCreate", err);
     throw err;
   }
 
-  /* ----------------------------------
-     3️⃣ Hash password
-  ----------------------------------- */
-  const hashedPassword = await bcrypt.hash(payload.password, 10);
-
-  /* ----------------------------------
-     4️⃣ Build DB document (CORRECT)
-  ----------------------------------- */
+  /* 3️⃣ Build DB document (server-enforced role) */
   const document = toUserDocument(
     {
       ...payload,
-      email: normalizedEmail, // ✔ still valid SignupPayload
+      email: normalizedEmail,
+      role: payload.role === "agent" ? "agent" : "user", // 🔒 enforce
     },
     accountId,
-    hashedPassword,
-    SIGNUP_BONUS_CREDITS // ✔ server-controlled
+    SIGNUP_BONUS_CREDITS
   );
 
-  /* ----------------------------------
-     5️⃣ Create DB row
-  ----------------------------------- */
+  /* 4️⃣ Create DB row (with rollback) */
   let createdRow;
   try {
     createdRow = await createUserRow(document);
   } catch (err) {
     logError("signupUser.createRow", err);
+
+    // 🔥 Rollback auth user
+    try {
+      await deleteUserRowByAccountId(accountId);
+    } catch {}
+
     throw err;
   }
 
-  /* ----------------------------------
-     6️⃣ Return response
-  ----------------------------------- */
   return {
     status: "SUCCESS",
     userId: accountId,
-    authUser,
     profileId: createdRow.$id,
     profile: safeFormat(createdRow),
   };

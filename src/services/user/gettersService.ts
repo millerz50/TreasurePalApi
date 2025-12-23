@@ -1,24 +1,21 @@
-// lib/services/gettersService.ts
-import { Query, TablesDB } from "node-appwrite";
+import { Databases, Query } from "node-appwrite";
 import { getClient, getEnv } from "../../services/lib/env";
 import { logError } from "../../services/lib/logger";
 import { safeFormat, UserRow } from "../../services/lib/models/user";
 
-const DB_ID = getEnv("APPWRITE_DATABASE_ID") ?? "";
-const USERS_TABLE = getEnv("APPWRITE_USERTABLE_ID") || "user";
+const DB_ID = getEnv("APPWRITE_DATABASE_ID")!;
+const USERS_COLLECTION = "users";
 
-function getTablesDB(): TablesDB {
-  return new TablesDB(getClient());
+function db() {
+  return new Databases(getClient());
 }
 
-/* ======================================
-   GET USER BY DOCUMENT ID
-====================================== */
+/* =========================
+   Get by document ID
+========================= */
 export async function getUserById(id: string): Promise<UserRow | null> {
   try {
-    const row = await getTablesDB().getRow(DB_ID, USERS_TABLE, id);
-
-    // ✅ Ensure credits always exist
+    const row = await db().getDocument(DB_ID, USERS_COLLECTION, id);
     return safeFormat({
       ...row,
       credits: row.credits ?? 0,
@@ -29,24 +26,22 @@ export async function getUserById(id: string): Promise<UserRow | null> {
   }
 }
 
-/* ======================================
-   GET USER BY ACCOUNT ID
-====================================== */
+/* =========================
+   Get by account ID
+========================= */
 export async function getUserByAccountId(
   accountid: string
 ): Promise<UserRow | null> {
   try {
-    const res = await getTablesDB().listRows(DB_ID, USERS_TABLE, [
+    const res = await db().listDocuments(DB_ID, USERS_COLLECTION, [
       Query.equal("accountid", accountid),
     ]);
 
     if (res.total === 0) return null;
 
-    const row = res.rows[0];
-
     return safeFormat({
-      ...row,
-      credits: row.credits ?? 0,
+      ...res.documents[0],
+      credits: res.documents[0].credits ?? 0,
     });
   } catch (err) {
     logError("getUserByAccountId", err, { accountid });
@@ -54,22 +49,20 @@ export async function getUserByAccountId(
   }
 }
 
-/* ======================================
-   FIND USER BY EMAIL
-====================================== */
+/* =========================
+   Find by email
+========================= */
 export async function findByEmail(email: string): Promise<UserRow | null> {
   try {
-    const res = await getTablesDB().listRows(DB_ID, USERS_TABLE, [
+    const res = await db().listDocuments(DB_ID, USERS_COLLECTION, [
       Query.equal("email", email.toLowerCase().trim()),
     ]);
 
     if (res.total === 0) return null;
 
-    const row = res.rows[0];
-
     return safeFormat({
-      ...row,
-      credits: row.credits ?? 0,
+      ...res.documents[0],
+      credits: res.documents[0].credits ?? 0,
     });
   } catch (err) {
     logError("findByEmail", err, { email });

@@ -1,4 +1,8 @@
 // user.types.ts
+
+export type UserRole = "user" | "agent" | "admin";
+export type UserStatus = "Not Verified" | "Pending" | "Active" | "Suspended";
+
 export type SignupPayload = {
   accountid?: string;
 
@@ -11,15 +15,13 @@ export type SignupPayload = {
   phone?: string;
   country?: string;
   location?: string;
-
-  role?: "user" | "agent";
-  status?: "Not Verified" | "Pending" | "Active" | "Suspended";
-
-  nationalId?: string;
-  bio?: string;
-  metadata?: any[];
   dateOfBirth?: string;
 
-  // Used only for Appwrite auth
+  // 🔒 Signup can request role, but server enforces
+  role?: "user" | "agent";
+
+  status?: UserStatus;
+
+  // Appwrite Auth only
   authPhone?: string;
 };
