@@ -2,7 +2,6 @@ import { Databases, Query } from "node-appwrite";
 import { getClient, getEnv } from "../../services/lib/env";
 import { logError, logStep } from "../../services/lib/logger";
 import { safeFormat } from "../../services/lib/models/user";
-import { createSession } from "./authService";
 
 const DB_ID = getEnv("APPWRITE_DATABASE_ID")!;
 const USERS_COLLECTION = getEnv("APPWRITE_USERS_COLLECTION") ?? "users";
@@ -13,8 +12,8 @@ function db() {
 
 export type SigninPayload = {
   email: string;
-  password: string;
-  phone?: string; // profile phone
+  password: string; // kept for API compatibility, NOT used here
+  phone?: string;
 };
 
 export async function signinUser(payload: SigninPayload) {
@@ -22,28 +21,16 @@ export async function signinUser(payload: SigninPayload) {
 
   const normalizedEmail = payload.email.toLowerCase().trim();
 
-  /* 1️⃣ Authenticate with Appwrite */
-  let session;
-  try {
-    session = await createSession(normalizedEmail, payload.password);
-  } catch {
-    const err: any = new Error("Invalid credentials");
-    err.status = 401;
-    throw err;
-  }
+  /* -----------------------------
+     1️⃣ FETCH USER PROFILE ONLY
+     (AUTH IS DONE ON FRONTEND)
+  ------------------------------ */
 
-  /* 2️⃣ Fetch user profile */
   const res = await db().listDocuments(DB_ID, USERS_COLLECTION, [
     Query.equal("email", normalizedEmail),
   ]);
 
   if (res.total === 0) {
-    // 🚨 Cleanup session if profile missing
-    try {
-      // @ts-ignore
-      await session.delete?.();
-    } catch {}
-
     const err: any = new Error("User profile not found");
     err.status = 404;
     throw err;
@@ -51,7 +38,10 @@ export async function signinUser(payload: SigninPayload) {
 
   const user = res.documents[0];
 
-  /* 3️⃣ Update last login + phone */
+  /* -----------------------------
+     2️⃣ UPDATE LAST LOGIN + PHONE
+  ------------------------------ */
+
   const updates: Record<string, any> = {
     lastLoginAt: new Date().toISOString(),
   };
@@ -69,9 +59,12 @@ export async function signinUser(payload: SigninPayload) {
     }
   }
 
+  /* -----------------------------
+     3️⃣ RETURN SAFE PROFILE ONLY
+  ------------------------------ */
+
   return {
     status: "SUCCESS",
-    session,
     profile: safeFormat(user),
   };
 }

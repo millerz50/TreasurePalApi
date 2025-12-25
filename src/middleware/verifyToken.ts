@@ -1,5 +1,6 @@
 import { NextFunction, Request, Response } from "express";
 import { Account, Client, Databases, Query } from "node-appwrite";
+import { UserRole } from "../services/user/user.types";
 import { AuthenticatedUser } from "../types/authenticatedUser";
 
 // ✅ Extend Express Request type to include accountId and authUser
@@ -12,6 +13,9 @@ declare global {
   }
 }
 
+/**
+ * Middleware: Verify JWT and attach authenticated user info
+ */
 export async function verifyToken(
   req: Request,
   res: Response,
@@ -32,7 +36,7 @@ export async function verifyToken(
         .json({ error: "Unauthorized: Invalid token format" });
     }
 
-    // ✅ Initialize Appwrite client with JWT
+    // Initialize Appwrite client with JWT
     const client = new Client()
       .setEndpoint(process.env.APPWRITE_ENDPOINT!)
       .setProject(process.env.APPWRITE_PROJECT_ID!)
@@ -41,13 +45,13 @@ export async function verifyToken(
     const account = new Account(client);
     const databases = new Databases(client);
 
-    // ✅ Verify JWT by fetching the account
+    // Verify JWT by fetching the account
     const session = await account.get();
 
-    // ✅ Query your users table by accountId
+    // Query users collection by accountId
     const userDocs = await databases.listDocuments(
-      process.env.APPWRITE_DATABASE_ID!, // e.g. treasuredataid
-      process.env.APPWRITE_USERTABLE_ID!, // e.g. userid
+      process.env.APPWRITE_DATABASE_ID!,
+      process.env.APPWRITE_USERTABLE_ID!,
       [Query.equal("accountid", session.$id)]
     );
 
@@ -56,11 +60,14 @@ export async function verifyToken(
       return res.status(404).json({ error: "Profile not found" });
     }
 
-    // ✅ Attach authenticated user info to request
+    // Attach authenticated user info
+    const roles: UserRole[] = Array.isArray(profile.roles) ? profile.roles : [];
     req.authUser = {
       id: session.$id,
-      roles: Array.isArray(profile.roles) ? profile.roles : [], // roles array
-    } as AuthenticatedUser;
+      email: profile.email,
+      roles,
+      role: roles.length > 0 ? roles[0] : "user", // pick first role as primary
+    };
     req.accountId = session.$id;
 
     return next();
@@ -70,7 +77,9 @@ export async function verifyToken(
   }
 }
 
-// ✅ Updated admin check to handle roles array
+/**
+ * Middleware: Verify JWT + Admin role
+ */
 export async function verifyTokenAndAdmin(
   req: Request,
   res: Response,
