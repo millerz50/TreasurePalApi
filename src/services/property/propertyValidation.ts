@@ -15,9 +15,17 @@ export async function validateAgent(agentId: string) {
   const agentRes = await tablesDB.listRows(DB_ID, USERS_TABLE, [
     Query.equal("accountid", String(agentId)),
   ]);
+
   const agentDoc = agentRes.total > 0 ? agentRes.rows[0] : null;
-  if (!agentDoc || agentDoc.role !== "agent") {
+
+  // ✅ Check roles array instead of a single role field
+  if (
+    !agentDoc ||
+    !Array.isArray(agentDoc.roles) ||
+    !agentDoc.roles.includes("agent")
+  ) {
     throw new Error("Invalid agentId or user is not an agent");
   }
+
   return agentDoc;
 }

@@ -1,9 +1,7 @@
-// types/authenticatedUser.ts
-// types/authenticatedUser.ts
-export type UserRole = "admin" | "agent" | "user"; // extend as needed
+import type { UserRole } from "../services/user/user.types";
 
 export interface AuthenticatedUser {
   id: string;
-  role: UserRole;
+  roles: UserRole[];
   email?: string;
 }

@@ -57,7 +57,10 @@ export async function verifyToken(
     }
 
     // ✅ Attach authenticated user info to request
-    req.authUser = { id: session.$id, role: profile.role } as AuthenticatedUser;
+    req.authUser = {
+      id: session.$id,
+      roles: Array.isArray(profile.roles) ? profile.roles : [], // roles array
+    } as AuthenticatedUser;
     req.accountId = session.$id;
 
     return next();
@@ -67,13 +70,14 @@ export async function verifyToken(
   }
 }
 
+// ✅ Updated admin check to handle roles array
 export async function verifyTokenAndAdmin(
   req: Request,
   res: Response,
   next: NextFunction
 ) {
   await verifyToken(req, res, async () => {
-    if (!req.authUser || req.authUser.role !== "admin") {
+    if (!req.authUser || !req.authUser.roles.includes("admin")) {
       return res.status(403).json({ error: "Admin access required" });
     }
     return next();
