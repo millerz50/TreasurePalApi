@@ -34,6 +34,7 @@ export async function listProperties(limit = 100) {
  */
 export async function getPropertyById(id: string) {
   const doc = await databases.getDocument(DB_ID, PROPERTIES_COLLECTION, id);
+  if (!doc) throw new Error(`Property with ID ${id} not found`);
   return formatProperty(doc);
 }
 
@@ -52,15 +53,15 @@ export async function createProperty(
   const imageIds = await uploadPropertyImages(imageFiles);
 
   const record: any = {
-    title: payload.title,
-    price: payload.price,
-    location: payload.location,
-    address: payload.address,
+    title: payload.title ?? "",
+    price: payload.price ?? 0,
+    location: payload.location ?? "",
+    address: payload.address ?? "",
     rooms: payload.rooms ? Number(payload.rooms) : 0,
-    description: payload.description || "",
-    type: payload.type || "",
-    status: payload.status || "pending",
-    country: payload.country || "",
+    description: payload.description ?? "",
+    type: payload.type ?? "",
+    status: payload.status ?? "pending",
+    country: payload.country ?? "",
     amenities: toCsv(payload.amenities),
     ...coords,
     agentId: userId,
@@ -100,24 +101,31 @@ export async function updateProperty(
   );
   if (!existing) throw new Error("Property not found");
 
-  if (!isAdmin) delete updates.agentId;
+  // prevent non-admins from reassigning agent
+  if (!isAdmin && updates.agentId) {
+    delete updates.agentId;
+  }
 
   const coords = parseCoordinates(updates.coordinates);
   const imageIds = await uploadPropertyImages(imageFiles);
 
   const payload: any = {
-    ...(updates.title && { title: updates.title }),
-    ...(updates.price && { price: updates.price }),
-    ...(updates.location && { location: updates.location }),
-    ...(updates.address && { address: updates.address }),
-    ...(updates.rooms && { rooms: Number(updates.rooms) }),
-    ...(updates.description && { description: updates.description }),
-    ...(updates.type && { type: updates.type }),
-    ...(updates.status && { status: updates.status }),
-    ...(updates.country && { country: updates.country }),
-    ...(updates.amenities && { amenities: toCsv(updates.amenities) }),
+    ...(updates.title !== undefined && { title: updates.title }),
+    ...(updates.price !== undefined && { price: updates.price }),
+    ...(updates.location !== undefined && { location: updates.location }),
+    ...(updates.address !== undefined && { address: updates.address }),
+    ...(updates.rooms !== undefined && { rooms: Number(updates.rooms) }),
+    ...(updates.description !== undefined && {
+      description: updates.description,
+    }),
+    ...(updates.type !== undefined && { type: updates.type }),
+    ...(updates.status !== undefined && { status: updates.status }),
+    ...(updates.country !== undefined && { country: updates.country }),
+    ...(updates.amenities !== undefined && {
+      amenities: toCsv(updates.amenities),
+    }),
     ...coords,
-    ...(updates.agentId && { agentId: String(updates.agentId) }),
+    ...(updates.agentId !== undefined && { agentId: String(updates.agentId) }),
     ...imageIds,
   };
 

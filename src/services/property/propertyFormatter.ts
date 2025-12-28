@@ -2,6 +2,8 @@ import { IMAGE_KEYS } from "./propertyImages";
 import { fromCsv, getPreviewUrl } from "./propertyUtils";
 
 export function formatProperty(row: any) {
+  console.log("📝 [formatProperty] Formatting row:", row?.$id);
+
   const base = {
     $id: row.$id,
     title: row.title,
@@ -43,5 +45,6 @@ export function formatProperty(row: any) {
     images[key] = { fileId, previewUrl: getPreviewUrl(fileId) };
   });
 
+  console.log("✅ [formatProperty] Finished formatting:", base.$id);
   return { ...base, images };
 }
