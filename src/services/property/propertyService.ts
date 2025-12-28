@@ -1,24 +1,26 @@
-// server/services/propertyService.ts
-import { Client, Databases, ID } from "node-appwrite";
+import { ID, Permission, Query, Role } from "node-appwrite";
+import { uploadToAppwriteBucket } from "../../lib/uploadToAppwrite";
+import {
+  DB_ID,
+  PROPERTIES_COLLECTION,
+  USERS_COLLECTION,
+  databases,
+  storage,
+} from "./client";
 import { formatProperty } from "./propertyFormatter";
-import { deletePropertyImages, uploadPropertyImages } from "./propertyImages";
-import { buildPropertyPermissions } from "./propertyPermissions";
-import { parseCoordinates, toCsv } from "./propertyUtils";
-import { validateAgent } from "./propertyValidation";
+import { IMAGE_KEYS, parseCoordinates, toCsv } from "./utils";
 
-const client = new Client()
-  .setEndpoint(process.env.APPWRITE_ENDPOINT!)
-  .setProject(process.env.APPWRITE_PROJECT_ID!)
-  .setKey(process.env.APPWRITE_API_KEY!); // Server API key, bypasses session restrictions
+/** ---------------- Helper: build permissions ---------------- */
+export function buildPropertyPermissions(agentId: string) {
+  return [
+    Permission.read(Role.user(agentId)),
+    Permission.update(Role.user(agentId)),
+    Permission.delete(Role.user(agentId)),
+    Permission.read(Role.any()),
+  ];
+}
 
-const databases = new Databases(client);
-
-const DB_ID = process.env.APPWRITE_DATABASE_ID!;
-const PROPERTIES_COLLECTION = "properties";
-
-/**
- * List properties
- */
+/** -------------------- CRUD -------------------- */
 export async function listProperties(limit = 100) {
   const res = await databases.listDocuments(
     DB_ID,
@@ -29,52 +31,52 @@ export async function listProperties(limit = 100) {
   return res.documents.map(formatProperty);
 }
 
-/**
- * Get a single property by ID
- */
 export async function getPropertyById(id: string) {
   const doc = await databases.getDocument(DB_ID, PROPERTIES_COLLECTION, id);
-  if (!doc) throw new Error(`Property with ID ${id} not found`);
   return formatProperty(doc);
 }
 
-/**
- * Create property (agent)
- * @param payload - property data
- * @param accountId - Appwrite user.$id from auth middleware
- */
 export async function createProperty(
   payload: any,
-  accountId: string,
+  agentId: string,
   imageFiles?: Record<string, { buffer: Buffer; name: string }>
 ) {
-  // ✅ Ensure agent is valid in your users collection
-  await validateAgent(accountId);
+  // Validate agent
+  const agentRes = await databases.listDocuments(DB_ID, USERS_COLLECTION, [
+    Query.equal("accountid", agentId),
+  ]);
+  const agentDoc = agentRes.documents[0];
+  if (!agentDoc || agentDoc.role !== "agent") throw new Error("Invalid agent");
 
   const coords = parseCoordinates(payload.coordinates);
-  const imageIds = await uploadPropertyImages(imageFiles);
 
-  const record: any = {
-    title: payload.title ?? "",
-    price: payload.price ?? 0,
-    location: payload.location ?? "",
-    address: payload.address ?? "",
-    rooms: payload.rooms ? Number(payload.rooms) : 0,
-    description: payload.description ?? "",
-    type: payload.type ?? "",
-    status: payload.status ?? "pending",
-    country: payload.country ?? "",
-    amenities: toCsv(payload.amenities),
+  // Upload images
+  const imageIds: Record<string, string | null> = {};
+  if (imageFiles) {
+    for (const key of IMAGE_KEYS) {
+      if (imageFiles[key]) {
+        const { fileId } = await uploadToAppwriteBucket(
+          imageFiles[key].buffer,
+          imageFiles[key].name
+        );
+        imageIds[key] = fileId;
+      }
+    }
+  }
+
+  const record = {
+    ...payload,
     ...coords,
-    agentId: accountId, // store Appwrite accountId
+    agentId,
+    rooms: payload.rooms ? Number(payload.rooms) : 0,
+    amenities: toCsv(payload.amenities),
     published: false,
     approvedBy: null,
     approvedAt: null,
     ...imageIds,
   };
 
-  // 🔑 Set permissions so agent and admins can manage the document
-  const permissions = buildPropertyPermissions(accountId);
+  const permissions = buildPropertyPermissions(agentId);
 
   const doc = await databases.createDocument(
     DB_ID,
@@ -83,17 +85,13 @@ export async function createProperty(
     record,
     permissions
   );
-
   return formatProperty(doc);
 }
 
-/**
- * Update property
- */
 export async function updateProperty(
   id: string,
   updates: any,
-  accountId: string,
+  userId: string,
   isAdmin = false,
   imageFiles?: Record<string, { buffer: Buffer; name: string }>
 ) {
@@ -102,37 +100,29 @@ export async function updateProperty(
     PROPERTIES_COLLECTION,
     id
   );
-  if (!existing) throw new Error("Property not found");
-
-  // ✅ Only admins or the property owner can update
-  if (!isAdmin && existing.agentId !== accountId) {
-    throw new Error("You are not allowed to update this property");
-  }
+  if (!isAdmin && existing.agentId !== userId) throw new Error("Forbidden");
 
   const coords = parseCoordinates(updates.coordinates);
-  const imageIds = await uploadPropertyImages(imageFiles);
 
-  const payload: any = {
-    ...(updates.title !== undefined && { title: updates.title }),
-    ...(updates.price !== undefined && { price: updates.price }),
-    ...(updates.location !== undefined && { location: updates.location }),
-    ...(updates.address !== undefined && { address: updates.address }),
-    ...(updates.rooms !== undefined && { rooms: Number(updates.rooms) }),
-    ...(updates.description !== undefined && {
-      description: updates.description,
-    }),
-    ...(updates.type !== undefined && { type: updates.type }),
-    ...(updates.status !== undefined && { status: updates.status }),
-    ...(updates.country !== undefined && { country: updates.country }),
-    ...(updates.amenities !== undefined && {
-      amenities: toCsv(updates.amenities),
-    }),
-    ...coords,
-    ...(updates.agentId !== undefined &&
-      isAdmin && { agentId: String(updates.agentId) }),
-    ...imageIds,
-  };
+  const imageIds: Record<string, string> = {};
+  if (imageFiles) {
+    for (const key of IMAGE_KEYS) {
+      if (imageFiles[key]) {
+        if (existing[key])
+          await storage.deleteFile(
+            process.env.APPWRITE_BUCKET_ID!,
+            existing[key]
+          );
+        const { fileId } = await uploadToAppwriteBucket(
+          imageFiles[key].buffer,
+          imageFiles[key].name
+        );
+        imageIds[key] = fileId;
+      }
+    }
+  }
 
+  const payload = { ...updates, ...coords, ...imageIds };
   const doc = await databases.updateDocument(
     DB_ID,
     PROPERTIES_COLLECTION,
@@ -142,22 +132,15 @@ export async function updateProperty(
   return formatProperty(doc);
 }
 
-/**
- * Delete property
- */
-export async function deleteProperty(
-  id: string,
-  accountId: string,
-  isAdmin = false
-) {
-  const doc = await databases.getDocument(DB_ID, PROPERTIES_COLLECTION, id);
-  if (!doc) throw new Error("Property not found");
-
-  // ✅ Only admins or the property owner can delete
-  if (!isAdmin && doc.agentId !== accountId) {
-    throw new Error("You are not allowed to delete this property");
+export async function deleteProperty(id: string) {
+  const existing = await databases.getDocument(
+    DB_ID,
+    PROPERTIES_COLLECTION,
+    id
+  );
+  for (const key of IMAGE_KEYS) {
+    if (existing[key])
+      await storage.deleteFile(process.env.APPWRITE_BUCKET_ID!, existing[key]);
   }
-
-  await deletePropertyImages(doc);
   await databases.deleteDocument(DB_ID, PROPERTIES_COLLECTION, id);
 }
