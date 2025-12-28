@@ -9,7 +9,7 @@ import { validateAgent } from "./propertyValidation";
 const client = new Client()
   .setEndpoint(process.env.APPWRITE_ENDPOINT!)
   .setProject(process.env.APPWRITE_PROJECT_ID!)
-  .setKey(process.env.APPWRITE_API_KEY!);
+  .setKey(process.env.APPWRITE_API_KEY!); // Server API key, bypasses session restrictions
 
 const databases = new Databases(client);
 
@@ -73,7 +73,7 @@ export async function createProperty(
     ...imageIds,
   };
 
-  // 🔑 Use Appwrite accountId for permissions
+  // 🔑 Set permissions so agent and admins can manage the document
   const permissions = buildPropertyPermissions(accountId);
 
   const doc = await databases.createDocument(
@@ -104,9 +104,9 @@ export async function updateProperty(
   );
   if (!existing) throw new Error("Property not found");
 
-  // prevent non-admins from reassigning agent
-  if (!isAdmin && updates.agentId) {
-    delete updates.agentId;
+  // ✅ Only admins or the property owner can update
+  if (!isAdmin && existing.agentId !== accountId) {
+    throw new Error("You are not allowed to update this property");
   }
 
   const coords = parseCoordinates(updates.coordinates);
@@ -128,7 +128,8 @@ export async function updateProperty(
       amenities: toCsv(updates.amenities),
     }),
     ...coords,
-    ...(updates.agentId !== undefined && { agentId: String(updates.agentId) }),
+    ...(updates.agentId !== undefined &&
+      isAdmin && { agentId: String(updates.agentId) }),
     ...imageIds,
   };
 
@@ -144,9 +145,18 @@ export async function updateProperty(
 /**
  * Delete property
  */
-export async function deleteProperty(id: string) {
+export async function deleteProperty(
+  id: string,
+  accountId: string,
+  isAdmin = false
+) {
   const doc = await databases.getDocument(DB_ID, PROPERTIES_COLLECTION, id);
   if (!doc) throw new Error("Property not found");
+
+  // ✅ Only admins or the property owner can delete
+  if (!isAdmin && doc.agentId !== accountId) {
+    throw new Error("You are not allowed to delete this property");
+  }
 
   await deletePropertyImages(doc);
   await databases.deleteDocument(DB_ID, PROPERTIES_COLLECTION, id);
