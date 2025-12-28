@@ -1,15 +1,31 @@
+// server/services/propertyService.ts
 import { ID, Permission, Query, Role } from "node-appwrite";
 import { uploadToAppwriteBucket } from "../../lib/uploadToAppwrite";
 import {
   DB_ID,
   PROPERTIES_TABLE,
+  USERS_TABLE,
   storage,
   tablesDB,
-  USERS_TABLE,
 } from "./client";
 import { formatProperty } from "./formatters";
 import { IMAGE_KEYS, parseCoordinates, toCsv } from "./utils";
 
+/** ---------------- Helper: build permissions ---------------- */
+export function buildPropertyPermissions(agentId: string) {
+  return [
+    Permission.read(Role.user(agentId)),
+    Permission.update(Role.user(agentId)),
+    Permission.delete(Role.user(agentId)),
+    Permission.read(Role.any()),
+    Permission.update(Role.team("admins")),
+    Permission.delete(Role.team("admins")),
+  ];
+}
+
+/** -------------------- CRUD -------------------- */
+
+/** List properties (public) */
 export async function listProperties(limit = 100) {
   const res = await tablesDB.listRows(
     DB_ID,
@@ -20,16 +36,18 @@ export async function listProperties(limit = 100) {
   return res.rows.map(formatProperty);
 }
 
+/** Get a property by ID (public) */
 export async function getPropertyById(id: string) {
   const row = await tablesDB.getRow(DB_ID, PROPERTIES_TABLE, id);
   return formatProperty(row);
 }
 
+/** Create a property (agent) */
 export async function createProperty(
   payload: any,
   imageFiles?: Record<string, { buffer: Buffer; name: string }>
 ) {
-  // validate agent
+  // Validate agent
   const agentRes = await tablesDB.listRows(DB_ID, USERS_TABLE, [
     Query.equal("accountid", String(payload.agentId)),
   ]);
@@ -39,6 +57,7 @@ export async function createProperty(
 
   const coords = parseCoordinates(payload.coordinates);
 
+  // Upload images
   const imageIds: Record<string, string | null> = {};
   if (imageFiles) {
     for (const key of IMAGE_KEYS) {
@@ -88,14 +107,7 @@ export async function createProperty(
     ...imageIds,
   };
 
-  const permissions = [
-    Permission.read(Role.user(payload.agentId)),
-    Permission.update(Role.user(payload.agentId)),
-    Permission.delete(Role.user(payload.agentId)),
-    Permission.read(Role.any()),
-    Permission.update(Role.team("admins")),
-    Permission.delete(Role.team("admins")),
-  ];
+  const permissions = buildPropertyPermissions(payload.agentId);
 
   const row = await tablesDB.createRow(
     DB_ID,
@@ -107,17 +119,28 @@ export async function createProperty(
   return formatProperty(row);
 }
 
+/** Update a property (owner or admin) */
 export async function updateProperty(
   id: string,
   updates: any,
-  imageFiles?: Record<string, { buffer: Buffer; name: string }>
+  imageFiles?: Record<string, { buffer: Buffer; name: string }>,
+  isAdmin = false
 ) {
+  const existing = await tablesDB.getRow(DB_ID, PROPERTIES_TABLE, id);
+  if (!existing) throw new Error("Property not found");
+
   const coords = parseCoordinates(updates.coordinates);
 
+  // Upload new images and delete old ones if replaced
   const imageIds: Record<string, string | undefined> = {};
   if (imageFiles) {
     for (const key of IMAGE_KEYS) {
       if (imageFiles[key]) {
+        if (existing[key])
+          await storage.deleteFile(
+            process.env.APPWRITE_BUCKET_ID!,
+            existing[key]
+          );
         const { fileId } = await uploadToAppwriteBucket(
           imageFiles[key].buffer,
           imageFiles[key].name
@@ -143,7 +166,10 @@ export async function updateProperty(
       amenities: toCsv(updates.amenities),
     }),
     ...coords,
-    ...(updates.agentId !== undefined && { agentId: String(updates.agentId) }),
+
+    // Only admin can reassign agent
+    ...(updates.agentId !== undefined &&
+      isAdmin && { agentId: String(updates.agentId) }),
 
     // deposit
     ...(updates.depositAvailable !== undefined && {
@@ -178,12 +204,15 @@ export async function updateProperty(
   return formatProperty(row);
 }
 
+/** Delete a property (owner or admin) */
 export async function deleteProperty(id: string) {
-  const row = await tablesDB.getRow(DB_ID, PROPERTIES_TABLE, id);
+  const existing = await tablesDB.getRow(DB_ID, PROPERTIES_TABLE, id);
+  if (!existing) throw new Error("Property not found");
+
   for (const key of IMAGE_KEYS) {
-    if (row[key]) {
-      await storage.deleteFile(process.env.APPWRITE_BUCKET_ID!, row[key]);
-    }
+    if (existing[key])
+      await storage.deleteFile(process.env.APPWRITE_BUCKET_ID!, existing[key]);
   }
+
   await tablesDB.deleteRow(DB_ID, PROPERTIES_TABLE, id);
 }

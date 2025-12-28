@@ -16,8 +16,9 @@ const tablesDB = new TablesDB(client);
 const DB_ID = process.env.APPWRITE_DATABASE_ID!;
 const PROPERTIES_TABLE = "properties";
 
-// -------------------- CRUD --------------------
-
+/**
+ * List properties
+ */
 export async function listProperties(limit = 100) {
   const res = await tablesDB.listRows(DB_ID, PROPERTIES_TABLE, [
     Query.limit(limit),
@@ -25,16 +26,27 @@ export async function listProperties(limit = 100) {
   return res.rows.map(formatProperty);
 }
 
+/**
+ * Get a single property by ID
+ */
 export async function getPropertyById(id: string) {
   const row = await tablesDB.getRow(DB_ID, PROPERTIES_TABLE, id);
   return formatProperty(row);
 }
+
+/**
+ * Create property (agent)
+ * @param payload - property data
+ * @param imageFiles - optional image uploads
+ * @param userId - authenticated agent ID
+ */
 export async function createProperty(
   payload: any,
+  userId: string,
   imageFiles?: Record<string, { buffer: Buffer; name: string }>
 ) {
-  // ✅ MULTI-ROLE SAFE
-  await validateAgent(payload.agentId);
+  // ✅ Ensure agent is valid
+  await validateAgent(userId);
 
   const coords = parseCoordinates(payload.coordinates);
   const imageIds = await uploadPropertyImages(imageFiles);
@@ -52,7 +64,8 @@ export async function createProperty(
     amenities: toCsv(payload.amenities),
     ...coords,
 
-    agentId: String(payload.agentId),
+    // Always use authenticated agentId
+    agentId: userId,
 
     published: false,
     approvedBy: null,
@@ -61,7 +74,7 @@ export async function createProperty(
     ...imageIds,
   };
 
-  const permissions = buildPropertyPermissions(payload.agentId);
+  const permissions = buildPropertyPermissions(userId);
 
   const row = await tablesDB.createRow(
     DB_ID,
@@ -74,11 +87,27 @@ export async function createProperty(
   return formatProperty(row);
 }
 
+/**
+ * Update property
+ * @param id - property ID
+ * @param updates - fields to update
+ * @param userId - authenticated user ID
+ * @param isAdmin - whether user is admin
+ * @param imageFiles - optional images
+ */
 export async function updateProperty(
   id: string,
   updates: any,
+  userId: string,
+  isAdmin = false,
   imageFiles?: Record<string, { buffer: Buffer; name: string }>
 ) {
+  const existing = await tablesDB.getRow(DB_ID, PROPERTIES_TABLE, id);
+  if (!existing) throw new Error("Property not found");
+
+  // ✅ Normal agents cannot change agentId
+  if (!isAdmin) delete updates.agentId;
+
   const coords = parseCoordinates(updates.coordinates);
   const imageIds = await uploadPropertyImages(imageFiles);
 
@@ -102,8 +131,14 @@ export async function updateProperty(
   return formatProperty(row);
 }
 
+/**
+ * Delete property
+ * @param id - property ID
+ */
 export async function deleteProperty(id: string) {
   const row = await tablesDB.getRow(DB_ID, PROPERTIES_TABLE, id);
+  if (!row) throw new Error("Property not found");
+
   await deletePropertyImages(row);
   await tablesDB.deleteRow(DB_ID, PROPERTIES_TABLE, id);
 }

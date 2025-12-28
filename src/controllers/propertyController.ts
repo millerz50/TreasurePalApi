@@ -1,3 +1,4 @@
+// server/controllers/propertyController.ts
 import { Request, Response } from "express";
 import {
   createProperty as svcCreateProperty,
@@ -41,18 +42,12 @@ export async function getPropertyById(req: Request, res: Response) {
  */
 export async function createProperty(req: Request, res: Response) {
   try {
-    // 🔍 Debug: log token and user
-    console.log("Authorization header:", req.headers.authorization);
-    console.log("Parsed authUser:", req.authUser);
-
     const user = req.authUser;
     if (!user || user.role !== "agent") {
       return res
         .status(403)
         .json({ error: "Only agents can create properties" });
     }
-
-    const body = { ...req.body, agentId: user.id };
 
     const imageFiles = req.file
       ? {
@@ -63,7 +58,8 @@ export async function createProperty(req: Request, res: Response) {
         }
       : undefined;
 
-    const property = await svcCreateProperty(body, imageFiles);
+    // Pass authenticated user.id to service
+    const property = await svcCreateProperty(req.body, user.id, imageFiles);
     res.status(201).json(property);
   } catch (err: any) {
     console.error("❌ Error in createProperty:", err);
@@ -76,15 +72,13 @@ export async function createProperty(req: Request, res: Response) {
  */
 export async function updateProperty(req: Request, res: Response) {
   try {
-    console.log("Authorization header:", req.headers.authorization);
-    console.log("Parsed authUser:", req.authUser);
-
     const user = req.authUser;
     if (!user) return res.status(401).json({ error: "Unauthorized" });
 
     const existing = await svcGetPropertyById(req.params.id);
     if (!existing) return res.status(404).json({ error: "Property not found" });
 
+    // Only admin or owner can update
     if (user.role !== "admin" && existing.agentId !== user.id) {
       return res.status(403).json({ error: "Forbidden" });
     }
@@ -101,6 +95,8 @@ export async function updateProperty(req: Request, res: Response) {
     const updated = await svcUpdateProperty(
       req.params.id,
       req.body,
+      user.id,
+      user.role === "admin",
       imageFiles
     );
     res.json(updated);
@@ -115,9 +111,6 @@ export async function updateProperty(req: Request, res: Response) {
  */
 export async function deleteProperty(req: Request, res: Response) {
   try {
-    console.log("Authorization header:", req.headers.authorization);
-    console.log("Parsed authUser:", req.authUser);
-
     const user = req.authUser;
     if (!user) return res.status(401).json({ error: "Unauthorized" });
 
@@ -141,9 +134,6 @@ export async function deleteProperty(req: Request, res: Response) {
  */
 export async function approveProperty(req: Request, res: Response) {
   try {
-    console.log("Authorization header:", req.headers.authorization);
-    console.log("Parsed authUser:", req.authUser);
-
     const admin = req.authUser;
     if (!admin || admin.role !== "admin") {
       return res.status(403).json({ error: "Admin required" });
@@ -156,7 +146,12 @@ export async function approveProperty(req: Request, res: Response) {
       approvedAt: new Date().toISOString(),
     };
 
-    const updated = await svcUpdateProperty(req.params.id, updates);
+    const updated = await svcUpdateProperty(
+      req.params.id,
+      updates,
+      admin.id,
+      true // isAdmin
+    );
     res.json(updated);
   } catch (err: any) {
     console.error("❌ Error in approveProperty:", err);
