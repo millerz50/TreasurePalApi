@@ -40,14 +40,16 @@ export async function getPropertyById(id: string) {
 
 /**
  * Create property (agent)
+ * @param payload - property data
+ * @param accountId - Appwrite user.$id from auth middleware
  */
 export async function createProperty(
   payload: any,
-  userId: string,
+  accountId: string,
   imageFiles?: Record<string, { buffer: Buffer; name: string }>
 ) {
-  // ✅ Ensure agent is valid
-  await validateAgent(userId);
+  // ✅ Ensure agent is valid in your users collection
+  await validateAgent(accountId);
 
   const coords = parseCoordinates(payload.coordinates);
   const imageIds = await uploadPropertyImages(imageFiles);
@@ -64,14 +66,15 @@ export async function createProperty(
     country: payload.country ?? "",
     amenities: toCsv(payload.amenities),
     ...coords,
-    agentId: userId,
+    agentId: accountId, // store Appwrite accountId
     published: false,
     approvedBy: null,
     approvedAt: null,
     ...imageIds,
   };
 
-  const permissions = buildPropertyPermissions(userId);
+  // 🔑 Use Appwrite accountId for permissions
+  const permissions = buildPropertyPermissions(accountId);
 
   const doc = await databases.createDocument(
     DB_ID,
@@ -90,7 +93,7 @@ export async function createProperty(
 export async function updateProperty(
   id: string,
   updates: any,
-  userId: string,
+  accountId: string,
   isAdmin = false,
   imageFiles?: Record<string, { buffer: Buffer; name: string }>
 ) {
