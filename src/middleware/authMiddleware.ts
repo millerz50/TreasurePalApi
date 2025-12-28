@@ -1,3 +1,4 @@
+// server/middleware/authMiddleware.ts
 import { NextFunction, Request, Response } from "express";
 import { Account, Client } from "node-appwrite";
 
@@ -13,7 +14,9 @@ declare global {
 }
 
 /* =========================
-   Auth Middleware
+   Auth Middleware (simple, JWT-only)
+   - Validates the JWT by calling Account.get() with a client that has .setJWT(token)
+   - Attaches req.accountId = user.$id
 ========================= */
 export async function authMiddleware(
   req: Request,
@@ -24,7 +27,6 @@ export async function authMiddleware(
   console.log("➡️ Incoming request:", req.method, req.originalUrl);
 
   try {
-    // 🔐 Extract Authorization header
     const authHeader = req.headers.authorization;
     console.log("➡️ Authorization header:", authHeader);
 
@@ -35,7 +37,6 @@ export async function authMiddleware(
         .json({ error: "Unauthorized: Missing Authorization header" });
     }
 
-    // 🔐 Extract Bearer token
     const token = authHeader.replace(/^Bearer\s+/i, "").trim();
     console.log("➡️ Extracted token:", token ? "[REDACTED]" : "EMPTY");
 
@@ -46,7 +47,7 @@ export async function authMiddleware(
         .json({ error: "Unauthorized: Invalid token format" });
     }
 
-    // ✅ Create a fresh Appwrite client per request
+    // Client with JWT — only used to validate the session (Account.get)
     const client = new Client()
       .setEndpoint(process.env.APPWRITE_ENDPOINT!)
       .setProject(process.env.APPWRITE_PROJECT_ID!)
@@ -54,7 +55,6 @@ export async function authMiddleware(
 
     const account = new Account(client);
 
-    // ✅ Validate session and get user
     console.log("➡️ Verifying token with Appwrite...");
     const user = await account.get();
 
@@ -65,7 +65,6 @@ export async function authMiddleware(
       return res.status(401).json({ error: "Unauthorized: Invalid user" });
     }
 
-    // Attach accountId to request
     req.accountId = user.$id;
     console.log("✅ Auth successful. accountId set on request:", req.accountId);
     console.log("───────────────────────────────────────────────");
@@ -73,16 +72,16 @@ export async function authMiddleware(
     return next();
   } catch (err: any) {
     console.error("❌ Auth middleware error");
-    console.error("   ├─ name:", err.name);
-    console.error("   ├─ message:", err.message);
-    console.error("   ├─ code:", err.code);
-    console.error("   ├─ type:", err.type);
-    console.error("   └─ response:", err.response);
+    console.error("   ├─ name:", err?.name);
+    console.error("   ├─ message:", err?.message);
+    console.error("   ├─ code:", err?.code);
+    console.error("   ├─ type:", err?.type);
+    console.error("   └─ response:", err?.response);
     console.log("───────────────────────────────────────────────");
 
     return res.status(401).json({
       error: "Unauthorized",
-      reason: err.type || err.message,
+      reason: err?.type || err?.message,
     });
   }
 }
