@@ -1,24 +1,20 @@
-// server/services/propertyPermissions.ts
 import { Permission, Role } from "node-appwrite";
 
-/**
- * Build permissions for a property document.
- *
- * Since the server uses the API key, Role.user(agentId) is not required.
- * Public can read, admin team can update/delete.
- */
 export function buildPropertyPermissions(agentId: string) {
   console.log(
     "🔐 [buildPropertyPermissions] Building permissions for agent:",
     agentId
   );
-
   return [
-    // Public can read properties
+    // Agent can read/update/delete their own property
+    Permission.read(Role.user(agentId)),
+    Permission.update(Role.user(agentId)),
+    Permission.delete(Role.user(agentId)),
+
+    // Public can read
     Permission.read(Role.any()),
 
-    // Admin team can update/delete any property
-    Permission.update(Role.team("admins")),
-    Permission.delete(Role.team("admins")),
+    // Admin functionality: use API key in server to bypass team permissions
+    // No Role.team() here since free tier may not support it
   ];
 }
