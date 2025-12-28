@@ -29,28 +29,42 @@ function getErrorMessage(err: unknown): string {
  */
 async function uploadPropertyImages(
   imageFiles?: Record<string, { buffer: Buffer; name: string }>
-) {
+): Promise<Record<string, string | null>> {
   const imageIds: Record<string, string | null> = {};
   if (!imageFiles) return imageIds;
 
   for (const key of IMAGE_KEYS) {
-    if (imageFiles[key]) {
-      try {
-        const { fileId } = await uploadToAppwriteBucket(
-          imageFiles[key].buffer,
-          imageFiles[key].name
-        );
-        imageIds[key] = fileId;
-        console.log(`🖼 [uploadPropertyImages] uploaded ${key}:`, fileId);
-      } catch (err: unknown) {
+    if (!imageFiles[key]) {
+      imageIds[key] = null;
+      continue;
+    }
+
+    const file = imageFiles[key];
+    if (!file || !file.buffer) {
+      console.warn(
+        `[uploadPropertyImages] skipping invalid file for key=${key}`
+      );
+      imageIds[key] = null;
+      continue;
+    }
+
+    try {
+      // uploadToAppwriteBucket returns { fileId, previewUrl }
+      const result = await uploadToAppwriteBucket(file.buffer, file.name);
+      if (!result || !result.fileId) {
         console.error(
-          `❌ [uploadPropertyImages] failed for ${key}:`,
-          getErrorMessage(err)
+          `[uploadPropertyImages] upload returned no fileId for key=${key}`
         );
         throw new Error("Image upload failed");
       }
-    } else {
-      imageIds[key] = null;
+      imageIds[key] = result.fileId;
+      console.log(`🖼 [uploadPropertyImages] uploaded ${key}:`, result.fileId);
+    } catch (err: unknown) {
+      console.error(
+        `❌ [uploadPropertyImages] failed for ${key}:`,
+        getErrorMessage(err)
+      );
+      throw new Error("Image upload failed");
     }
   }
   return imageIds;
@@ -112,7 +126,7 @@ export async function createProperty(
   const coords = parseCoordinates(payload.coordinates);
   console.log("   parsed coords:", coords);
 
-  // Upload images
+  // Upload images (returns map of fileIds or nulls)
   const imageIds = await uploadPropertyImages(imageFiles);
 
   // Build record with explicit defaults
@@ -217,25 +231,27 @@ export async function updateProperty(
 
   if (imageFiles) {
     for (const key of IMAGE_KEYS) {
-      if (imageFiles[key]) {
-        if (existing[key]) {
-          try {
-            // storage is imported from client and is the Appwrite Storage instance
-            await storage.deleteFile(
-              process.env.APPWRITE_BUCKET_ID!,
-              existing[key]
-            );
-            console.log(
-              `🗑 [updateProperty] deleted old image for ${key}:`,
-              existing[key]
-            );
-          } catch (err: unknown) {
-            console.warn(
-              `⚠️ [updateProperty] failed to delete old image ${existing[key]}:`,
-              getErrorMessage(err)
-            );
-          }
+      if (!imageFiles[key]) continue;
+
+      if (existing[key]) {
+        try {
+          await storage.deleteFile(
+            process.env.APPWRITE_BUCKET_ID!,
+            existing[key]
+          );
+          console.log(
+            `🗑 [updateProperty] deleted old image for ${key}:`,
+            existing[key]
+          );
+        } catch (err: unknown) {
+          console.warn(
+            `⚠️ [updateProperty] failed to delete old image ${existing[key]}:`,
+            getErrorMessage(err)
+          );
         }
+      }
+
+      try {
         const { fileId } = await uploadToAppwriteBucket(
           imageFiles[key].buffer,
           imageFiles[key].name
@@ -245,6 +261,12 @@ export async function updateProperty(
           `🖼 [updateProperty] uploaded new image for ${key}:`,
           fileId
         );
+      } catch (err: unknown) {
+        console.error(
+          `❌ [updateProperty] upload failed for ${key}:`,
+          getErrorMessage(err)
+        );
+        throw new Error("Image upload failed");
       }
     }
   }
