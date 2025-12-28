@@ -13,6 +13,21 @@ function extractImages(files: any) {
   return images;
 }
 
+/** Helper to safely extract an error message */
+function getErrorMessage(err: unknown): string {
+  if (!err) return String(err);
+  if (typeof err === "string") return err;
+  if (err instanceof Error) return err.message;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const anyErr = err as any;
+    if (anyErr && typeof anyErr.message === "string") return anyErr.message;
+    return JSON.stringify(anyErr);
+  } catch {
+    return String(err);
+  }
+}
+
 /** Public: list properties */
 export async function listProperties(_req: Request, res: Response) {
   console.log("📋 [listProperties] start");
@@ -24,15 +39,11 @@ export async function listProperties(_req: Request, res: Response) {
       "properties"
     );
     return res.json(properties);
-  } catch (err: any) {
-    console.error(
-      "❌ [listProperties] error:",
-      err?.message || err,
-      err?.stack
-    );
+  } catch (err: unknown) {
+    console.error("❌ [listProperties] error:", getErrorMessage(err));
     return res
       .status(500)
-      .json({ error: err?.message || "Internal Server Error" });
+      .json({ error: getErrorMessage(err) || "Internal Server Error" });
   }
 }
 
@@ -45,17 +56,16 @@ export async function getPropertyById(req: Request, res: Response) {
       console.warn("⚠️ [getPropertyById] not found:", req.params.id);
       return res.status(404).json({ error: "Property not found" });
     }
-    console.log("✅ [getPropertyById] found:", property.$id ?? "(formatted)");
-    return res.json(property);
-  } catch (err: any) {
-    console.error(
-      "❌ [getPropertyById] error:",
-      err?.message || err,
-      err?.stack
+    console.log(
+      "✅ [getPropertyById] found:",
+      (property as any)?.$id ?? "(formatted)"
     );
+    return res.json(property);
+  } catch (err: unknown) {
+    console.error("❌ [getPropertyById] error:", getErrorMessage(err));
     return res
       .status(500)
-      .json({ error: err?.message || "Internal Server Error" });
+      .json({ error: getErrorMessage(err) || "Internal Server Error" });
   }
 }
 
@@ -67,7 +77,7 @@ export async function createProperty(req: Request, res: Response) {
     console.log("   accountId:", (req as any).accountId);
     console.log("   authUser:", JSON.stringify((req as any).authUser, null, 2));
 
-    const user = req.authUser;
+    const user = (req as any).authUser;
     // Accept users with roles array that includes 'agent'
     if (!user || !Array.isArray(user.roles) || !user.roles.includes("agent")) {
       console.warn("⛔ [createProperty] access denied. roles:", user?.roles);
@@ -76,7 +86,7 @@ export async function createProperty(req: Request, res: Response) {
         .json({ error: "Only agents can create properties" });
     }
 
-    const accountId = req.accountId ?? user.id;
+    const accountId = (req as any).accountId ?? user.id;
     if (!accountId) {
       console.error("❌ [createProperty] missing accountId on request");
       return res
@@ -107,7 +117,7 @@ export async function createProperty(req: Request, res: Response) {
       // property may be formatted; attempt to log raw permission info if present
       console.log(
         "✅ [createProperty] created property id:",
-        property?.$id ?? "(no id)"
+        (property as any)?.$id ?? "(no id)"
       );
       if ((property as any)?.$permissions) {
         console.log(
@@ -123,22 +133,19 @@ export async function createProperty(req: Request, res: Response) {
     } catch (logErr) {
       console.warn(
         "⚠️ [createProperty] could not log created property details:",
-        logErr
+        getErrorMessage(logErr)
       );
     }
 
     return res.status(201).json(property);
-  } catch (err: any) {
-    console.error(
-      "❌ [createProperty] error:",
-      err?.message || err,
-      err?.stack
-    );
+  } catch (err: unknown) {
+    console.error("❌ [createProperty] error:", getErrorMessage(err));
     // Distinguish permission/validation errors
-    if (err.message && /agent|forbidden|unauthorized/i.test(err.message)) {
-      return res.status(403).json({ error: err.message });
+    const msg = getErrorMessage(err);
+    if (msg && /agent|forbidden|unauthorized/i.test(msg)) {
+      return res.status(403).json({ error: msg });
     }
-    return res.status(400).json({ error: err?.message || "Bad request" });
+    return res.status(400).json({ error: msg || "Bad request" });
   }
 }
 
@@ -149,7 +156,7 @@ export async function updateProperty(req: Request, res: Response) {
     console.log("   accountId:", (req as any).accountId);
     console.log("   authUser:", JSON.stringify((req as any).authUser, null, 2));
 
-    const user = req.authUser;
+    const user = (req as any).authUser;
     if (!user) {
       console.warn("⛔ [updateProperty] unauthorized");
       return res.status(401).json({ error: "Unauthorized" });
@@ -164,23 +171,27 @@ export async function updateProperty(req: Request, res: Response) {
     const isAdmin = Array.isArray(user.roles) && user.roles.includes("admin");
     console.log("   isAdmin:", isAdmin);
 
+    // Prefer req.accountId (Appwrite account $id) when calling service
+    const accountId = (req as any).accountId ?? user.id;
+
     const property = await service.updateProperty(
       req.params.id,
       req.body,
-      user.id,
+      accountId,
       isAdmin,
       images
     );
 
-    console.log("✅ [updateProperty] updated:", property?.$id ?? "(formatted)");
-    return res.json(property);
-  } catch (err: any) {
-    console.error(
-      "❌ [updateProperty] error:",
-      err?.message || err,
-      err?.stack
+    console.log(
+      "✅ [updateProperty] updated:",
+      (property as any)?.$id ?? "(formatted)"
     );
-    return res.status(400).json({ error: err?.message || "Bad request" });
+    return res.json(property);
+  } catch (err: unknown) {
+    console.error("❌ [updateProperty] error:", getErrorMessage(err));
+    return res
+      .status(400)
+      .json({ error: getErrorMessage(err) || "Bad request" });
   }
 }
 
@@ -191,23 +202,22 @@ export async function deleteProperty(req: Request, res: Response) {
     console.log("   accountId:", (req as any).accountId);
     console.log("   authUser:", JSON.stringify((req as any).authUser, null, 2));
 
-    const user = req.authUser;
+    const user = (req as any).authUser;
     if (!user) {
       console.warn("⛔ [deleteProperty] unauthorized");
       return res.status(401).json({ error: "Unauthorized" });
     }
 
-    // Optionally check role here if you want only admin/owner to delete
+    // Prefer req.accountId (Appwrite account $id) when calling service if service requires it
+    // Current service.deleteProperty accepts only id; if it requires accountId, update call accordingly.
     await service.deleteProperty(req.params.id);
     console.log("✅ [deleteProperty] deleted:", req.params.id);
     return res.status(204).send();
-  } catch (err: any) {
-    console.error(
-      "❌ [deleteProperty] error:",
-      err?.message || err,
-      err?.stack
-    );
-    return res.status(400).json({ error: err?.message || "Bad request" });
+  } catch (err: unknown) {
+    console.error("❌ [deleteProperty] error:", getErrorMessage(err));
+    return res
+      .status(400)
+      .json({ error: getErrorMessage(err) || "Bad request" });
   }
 }
 
@@ -218,7 +228,7 @@ export async function approveProperty(req: Request, res: Response) {
     console.log("   accountId:", (req as any).accountId);
     console.log("   authUser:", JSON.stringify((req as any).authUser, null, 2));
 
-    const admin = req.authUser;
+    const admin = (req as any).authUser;
     if (
       !admin ||
       !Array.isArray(admin.roles) ||
@@ -230,28 +240,26 @@ export async function approveProperty(req: Request, res: Response) {
 
     const updates = {
       published: true,
-      approvedBy: admin.id,
+      approvedBy: (req as any).accountId ?? admin.id,
       approvedAt: new Date().toISOString(),
     };
 
     const property = await service.updateProperty(
       req.params.id,
       updates,
-      admin.id,
+      (req as any).accountId ?? admin.id,
       true
     );
 
     console.log(
       "✅ [approveProperty] published:",
-      property?.$id ?? "(formatted)"
+      (property as any)?.$id ?? "(formatted)"
     );
     return res.json(property);
-  } catch (err: any) {
-    console.error(
-      "❌ [approveProperty] error:",
-      err?.message || err,
-      err?.stack
-    );
-    return res.status(400).json({ error: err?.message || "Bad request" });
+  } catch (err: unknown) {
+    console.error("❌ [approveProperty] error:", getErrorMessage(err));
+    return res
+      .status(400)
+      .json({ error: getErrorMessage(err) || "Bad request" });
   }
 }
