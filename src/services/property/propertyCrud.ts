@@ -1,12 +1,11 @@
 // server/services/propertyService.ts
-import { ID, Permission, Query, Role } from "node-appwrite";
+import { Databases, ID, Permission, Query, Role } from "node-appwrite";
 import { uploadToAppwriteBucket } from "../../lib/uploadToAppwrite";
 import {
   DB_ID,
-  PROPERTIES_TABLE,
-  USERS_TABLE,
+  PROPERTIES_COLLECTION,
+  USERS_COLLECTION,
   storage,
-  tablesDB,
 } from "./client";
 import { formatProperty } from "./formatters";
 import { IMAGE_KEYS, parseCoordinates, toCsv } from "./utils";
@@ -23,23 +22,25 @@ export function buildPropertyPermissions(agentId: string) {
   ];
 }
 
+const databases = new Databases(storage.client);
+
 /** -------------------- CRUD -------------------- */
 
 /** List properties (public) */
 export async function listProperties(limit = 100) {
-  const res = await tablesDB.listRows(
+  const res = await databases.listDocuments(
     DB_ID,
-    PROPERTIES_TABLE,
+    PROPERTIES_COLLECTION,
     [],
     String(limit)
   );
-  return res.rows.map(formatProperty);
+  return res.documents.map(formatProperty);
 }
 
 /** Get a property by ID (public) */
 export async function getPropertyById(id: string) {
-  const row = await tablesDB.getRow(DB_ID, PROPERTIES_TABLE, id);
-  return formatProperty(row);
+  const doc = await databases.getDocument(DB_ID, PROPERTIES_COLLECTION, id);
+  return formatProperty(doc);
 }
 
 /** Create a property (agent) */
@@ -48,10 +49,10 @@ export async function createProperty(
   imageFiles?: Record<string, { buffer: Buffer; name: string }>
 ) {
   // Validate agent
-  const agentRes = await tablesDB.listRows(DB_ID, USERS_TABLE, [
+  const agentRes = await databases.listDocuments(DB_ID, USERS_COLLECTION, [
     Query.equal("accountid", String(payload.agentId)),
   ]);
-  const agentDoc = agentRes.total > 0 ? agentRes.rows[0] : null;
+  const agentDoc = agentRes.total > 0 ? agentRes.documents[0] : null;
   if (!agentDoc || agentDoc.role !== "agent")
     throw new Error("Invalid agentId or user is not an agent");
 
@@ -89,13 +90,9 @@ export async function createProperty(
     published: false,
     approvedBy: null,
     approvedAt: null,
-
-    // deposit
     depositAvailable: !!payload.depositAvailable,
     depositOption: payload.depositOption || "none",
     depositPercentage: payload.depositPercentage || null,
-
-    // marketing
     website: payload.website || "",
     flyers: payload.flyers || "",
     hireDesigner: !!payload.hireDesigner,
@@ -103,20 +100,19 @@ export async function createProperty(
     subscriptionPlan: payload.subscriptionPlan || "free",
     whatsappGroup: payload.whatsappGroup || "",
     ads: payload.ads || "",
-
     ...imageIds,
   };
 
   const permissions = buildPropertyPermissions(payload.agentId);
 
-  const row = await tablesDB.createRow(
+  const doc = await databases.createDocument(
     DB_ID,
-    PROPERTIES_TABLE,
+    PROPERTIES_COLLECTION,
     ID.unique(),
     record,
     permissions
   );
-  return formatProperty(row);
+  return formatProperty(doc);
 }
 
 /** Update a property (owner or admin) */
@@ -126,7 +122,11 @@ export async function updateProperty(
   imageFiles?: Record<string, { buffer: Buffer; name: string }>,
   isAdmin = false
 ) {
-  const existing = await tablesDB.getRow(DB_ID, PROPERTIES_TABLE, id);
+  const existing = await databases.getDocument(
+    DB_ID,
+    PROPERTIES_COLLECTION,
+    id
+  );
   if (!existing) throw new Error("Property not found");
 
   const coords = parseCoordinates(updates.coordinates);
@@ -166,12 +166,8 @@ export async function updateProperty(
       amenities: toCsv(updates.amenities),
     }),
     ...coords,
-
-    // Only admin can reassign agent
     ...(updates.agentId !== undefined &&
       isAdmin && { agentId: String(updates.agentId) }),
-
-    // deposit
     ...(updates.depositAvailable !== undefined && {
       depositAvailable: !!updates.depositAvailable,
     }),
@@ -181,8 +177,6 @@ export async function updateProperty(
     ...(updates.depositPercentage !== undefined && {
       depositPercentage: updates.depositPercentage,
     }),
-
-    // marketing
     ...(updates.website !== undefined && { website: updates.website }),
     ...(updates.flyers !== undefined && { flyers: updates.flyers }),
     ...(updates.hireDesigner !== undefined && {
@@ -196,17 +190,25 @@ export async function updateProperty(
       whatsappGroup: updates.whatsappGroup,
     }),
     ...(updates.ads !== undefined && { ads: updates.ads }),
-
     ...imageIds,
   };
 
-  const row = await tablesDB.updateRow(DB_ID, PROPERTIES_TABLE, id, payload);
-  return formatProperty(row);
+  const doc = await databases.updateDocument(
+    DB_ID,
+    PROPERTIES_COLLECTION,
+    id,
+    payload
+  );
+  return formatProperty(doc);
 }
 
 /** Delete a property (owner or admin) */
 export async function deleteProperty(id: string) {
-  const existing = await tablesDB.getRow(DB_ID, PROPERTIES_TABLE, id);
+  const existing = await databases.getDocument(
+    DB_ID,
+    PROPERTIES_COLLECTION,
+    id
+  );
   if (!existing) throw new Error("Property not found");
 
   for (const key of IMAGE_KEYS) {
@@ -214,5 +216,5 @@ export async function deleteProperty(id: string) {
       await storage.deleteFile(process.env.APPWRITE_BUCKET_ID!, existing[key]);
   }
 
-  await tablesDB.deleteRow(DB_ID, PROPERTIES_TABLE, id);
+  await databases.deleteDocument(DB_ID, PROPERTIES_COLLECTION, id);
 }

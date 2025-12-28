@@ -1,24 +1,22 @@
-import { Client, Query, TablesDB } from "node-appwrite";
+import { Client, Databases, Query } from "node-appwrite";
 
 const client = new Client()
   .setEndpoint(process.env.APPWRITE_ENDPOINT!)
   .setProject(process.env.APPWRITE_PROJECT_ID!)
   .setKey(process.env.APPWRITE_API_KEY!);
 
-const DB_ID = process.env.APPWRITE_DATABASE_ID!;
-const USERS_TABLE = process.env.APPWRITE_USERTABLE_ID!;
+const databases = new Databases(client);
 
-// ✅ Pass client into TablesDB
-const tablesDB = new TablesDB(client);
+const DB_ID = process.env.APPWRITE_DATABASE_ID!;
+const USERS_COLLECTION = process.env.APPWRITE_USERTABLE_ID!;
 
 export async function validateAgent(agentId: string) {
-  const agentRes = await tablesDB.listRows(DB_ID, USERS_TABLE, [
+  const agentRes = await databases.listDocuments(DB_ID, USERS_COLLECTION, [
     Query.equal("accountid", String(agentId)),
   ]);
 
-  const agentDoc = agentRes.total > 0 ? agentRes.rows[0] : null;
+  const agentDoc = agentRes.total > 0 ? agentRes.documents[0] : null;
 
-  // ✅ Check roles array instead of a single role field
   if (
     !agentDoc ||
     !Array.isArray(agentDoc.roles) ||

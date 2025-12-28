@@ -3,7 +3,9 @@ import { Account, Client, Databases, Query } from "node-appwrite";
 import { UserRole } from "../services/user/user.types";
 import { AuthenticatedUser } from "../types/authenticatedUser";
 
-// ✅ Extend Express Request type to include accountId and authUser
+/* =========================
+   Extend Express Request type
+========================= */
 declare global {
   namespace Express {
     interface Request {
@@ -13,9 +15,9 @@ declare global {
   }
 }
 
-/**
- * Middleware: Verify JWT and attach authenticated user info
- */
+/* =========================
+   Middleware: Verify JWT and attach authenticated user info
+========================= */
 export async function verifyToken(
   req: Request,
   res: Response,
@@ -36,7 +38,7 @@ export async function verifyToken(
         .json({ error: "Unauthorized: Invalid token format" });
     }
 
-    // Initialize Appwrite client with JWT
+    // ✅ Initialize Appwrite client with JWT
     const client = new Client()
       .setEndpoint(process.env.APPWRITE_ENDPOINT!)
       .setProject(process.env.APPWRITE_PROJECT_ID!)
@@ -45,10 +47,10 @@ export async function verifyToken(
     const account = new Account(client);
     const databases = new Databases(client);
 
-    // Verify JWT by fetching the account
+    // ✅ Verify JWT by fetching the account
     const session = await account.get();
 
-    // Query users collection by accountId
+    // ✅ Query users collection by accountId
     const userDocs = await databases.listDocuments(
       process.env.APPWRITE_DATABASE_ID!,
       process.env.APPWRITE_USERTABLE_ID!,
@@ -60,7 +62,7 @@ export async function verifyToken(
       return res.status(404).json({ error: "Profile not found" });
     }
 
-    // Attach authenticated user info
+    // ✅ Attach authenticated user info
     const roles: UserRole[] = Array.isArray(profile.roles) ? profile.roles : [];
     req.authUser = {
       id: session.$id,
@@ -70,6 +72,8 @@ export async function verifyToken(
     };
     req.accountId = session.$id;
 
+    console.log("🔐 Authenticated user:", req.accountId, req.authUser?.roles);
+
     return next();
   } catch (err) {
     console.error("❌ Auth error:", err);
@@ -77,9 +81,9 @@ export async function verifyToken(
   }
 }
 
-/**
- * Middleware: Verify JWT + Admin role
- */
+/* =========================
+   Middleware: Verify JWT + Admin role
+========================= */
 export async function verifyTokenAndAdmin(
   req: Request,
   res: Response,

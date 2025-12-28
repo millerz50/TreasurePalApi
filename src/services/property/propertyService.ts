@@ -1,5 +1,5 @@
 // server/services/propertyService.ts
-import { Client, ID, Query, TablesDB } from "node-appwrite";
+import { Client, Databases, ID } from "node-appwrite";
 import { formatProperty } from "./propertyFormatter";
 import { deletePropertyImages, uploadPropertyImages } from "./propertyImages";
 import { buildPropertyPermissions } from "./propertyPermissions";
@@ -11,34 +11,34 @@ const client = new Client()
   .setProject(process.env.APPWRITE_PROJECT_ID!)
   .setKey(process.env.APPWRITE_API_KEY!);
 
-const tablesDB = new TablesDB(client);
+const databases = new Databases(client);
 
 const DB_ID = process.env.APPWRITE_DATABASE_ID!;
-const PROPERTIES_TABLE = "properties";
+const PROPERTIES_COLLECTION = "properties";
 
 /**
  * List properties
  */
 export async function listProperties(limit = 100) {
-  const res = await tablesDB.listRows(DB_ID, PROPERTIES_TABLE, [
-    Query.limit(limit),
-  ]);
-  return res.rows.map(formatProperty);
+  const res = await databases.listDocuments(
+    DB_ID,
+    PROPERTIES_COLLECTION,
+    [],
+    String(limit)
+  );
+  return res.documents.map(formatProperty);
 }
 
 /**
  * Get a single property by ID
  */
 export async function getPropertyById(id: string) {
-  const row = await tablesDB.getRow(DB_ID, PROPERTIES_TABLE, id);
-  return formatProperty(row);
+  const doc = await databases.getDocument(DB_ID, PROPERTIES_COLLECTION, id);
+  return formatProperty(doc);
 }
 
 /**
  * Create property (agent)
- * @param payload - property data
- * @param imageFiles - optional image uploads
- * @param userId - authenticated agent ID
  */
 export async function createProperty(
   payload: any,
@@ -51,7 +51,7 @@ export async function createProperty(
   const coords = parseCoordinates(payload.coordinates);
   const imageIds = await uploadPropertyImages(imageFiles);
 
-  const record = {
+  const record: any = {
     title: payload.title,
     price: payload.price,
     location: payload.location,
@@ -63,37 +63,28 @@ export async function createProperty(
     country: payload.country || "",
     amenities: toCsv(payload.amenities),
     ...coords,
-
-    // Always use authenticated agentId
     agentId: userId,
-
     published: false,
     approvedBy: null,
     approvedAt: null,
-
     ...imageIds,
   };
 
   const permissions = buildPropertyPermissions(userId);
 
-  const row = await tablesDB.createRow(
+  const doc = await databases.createDocument(
     DB_ID,
-    PROPERTIES_TABLE,
+    PROPERTIES_COLLECTION,
     ID.unique(),
     record,
     permissions
   );
 
-  return formatProperty(row);
+  return formatProperty(doc);
 }
 
 /**
  * Update property
- * @param id - property ID
- * @param updates - fields to update
- * @param userId - authenticated user ID
- * @param isAdmin - whether user is admin
- * @param imageFiles - optional images
  */
 export async function updateProperty(
   id: string,
@@ -102,16 +93,19 @@ export async function updateProperty(
   isAdmin = false,
   imageFiles?: Record<string, { buffer: Buffer; name: string }>
 ) {
-  const existing = await tablesDB.getRow(DB_ID, PROPERTIES_TABLE, id);
+  const existing = await databases.getDocument(
+    DB_ID,
+    PROPERTIES_COLLECTION,
+    id
+  );
   if (!existing) throw new Error("Property not found");
 
-  // ✅ Normal agents cannot change agentId
   if (!isAdmin) delete updates.agentId;
 
   const coords = parseCoordinates(updates.coordinates);
   const imageIds = await uploadPropertyImages(imageFiles);
 
-  const payload = {
+  const payload: any = {
     ...(updates.title && { title: updates.title }),
     ...(updates.price && { price: updates.price }),
     ...(updates.location && { location: updates.location }),
@@ -127,18 +121,22 @@ export async function updateProperty(
     ...imageIds,
   };
 
-  const row = await tablesDB.updateRow(DB_ID, PROPERTIES_TABLE, id, payload);
-  return formatProperty(row);
+  const doc = await databases.updateDocument(
+    DB_ID,
+    PROPERTIES_COLLECTION,
+    id,
+    payload
+  );
+  return formatProperty(doc);
 }
 
 /**
  * Delete property
- * @param id - property ID
  */
 export async function deleteProperty(id: string) {
-  const row = await tablesDB.getRow(DB_ID, PROPERTIES_TABLE, id);
-  if (!row) throw new Error("Property not found");
+  const doc = await databases.getDocument(DB_ID, PROPERTIES_COLLECTION, id);
+  if (!doc) throw new Error("Property not found");
 
-  await deletePropertyImages(row);
-  await tablesDB.deleteRow(DB_ID, PROPERTIES_TABLE, id);
+  await deletePropertyImages(doc);
+  await databases.deleteDocument(DB_ID, PROPERTIES_COLLECTION, id);
 }

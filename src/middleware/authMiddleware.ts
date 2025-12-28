@@ -1,7 +1,9 @@
 import { NextFunction, Request, Response } from "express";
 import { Account, Client } from "node-appwrite";
 
-// ✅ Extend Express Request type to include accountId
+/* =========================
+   Extend Express Request type
+========================= */
 declare global {
   namespace Express {
     interface Request {
@@ -10,6 +12,9 @@ declare global {
   }
 }
 
+/* =========================
+   Auth Middleware
+========================= */
 export async function authMiddleware(
   req: Request,
   res: Response,
@@ -19,6 +24,7 @@ export async function authMiddleware(
   console.log("➡️ Incoming request:", req.method, req.originalUrl);
 
   try {
+    // 🔐 Extract Authorization header
     const authHeader = req.headers.authorization;
     console.log("➡️ Authorization header:", authHeader);
 
@@ -29,6 +35,7 @@ export async function authMiddleware(
         .json({ error: "Unauthorized: Missing Authorization header" });
     }
 
+    // 🔐 Extract Bearer token
     const token = authHeader.replace(/^Bearer\s+/i, "").trim();
     console.log("➡️ Extracted token:", token ? "[REDACTED]" : "EMPTY");
 
@@ -58,6 +65,7 @@ export async function authMiddleware(
       return res.status(401).json({ error: "Unauthorized: Invalid user" });
     }
 
+    // Attach accountId to request
     req.accountId = user.$id;
     console.log("✅ Auth successful. accountId set on request:", req.accountId);
     console.log("───────────────────────────────────────────────");

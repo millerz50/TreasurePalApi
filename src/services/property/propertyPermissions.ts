@@ -2,13 +2,12 @@ import { Permission, Role } from "node-appwrite";
 
 export function buildPropertyPermissions(agentId: string) {
   return [
-    // Allow agent to create, read, update, delete their own property
-    Permission.create(Role.user(agentId)),
+    // Agent can fully manage their own property
     Permission.read(Role.user(agentId)),
     Permission.update(Role.user(agentId)),
     Permission.delete(Role.user(agentId)),
 
-    // Allow anyone to read
+    // Allow anyone to read (public listing)
     Permission.read(Role.any()),
 
     // Admin team can update and delete
