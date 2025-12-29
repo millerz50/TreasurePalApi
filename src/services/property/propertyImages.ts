@@ -1,7 +1,6 @@
 // server/services/propertyImages.ts
 import { Client, Storage } from "node-appwrite";
 import { uploadToAppwriteBucket } from "../../lib/uploadToAppwrite";
-import { supabase } from "../../superbase/supabase";
 
 const client = new Client()
   .setEndpoint(process.env.APPWRITE_ENDPOINT!)
@@ -22,7 +21,7 @@ type ImageFiles = Record<string, { buffer: Buffer; name: string }>;
 type ImageIds = Record<string, string | null>;
 
 /**
- * Generate a public Appwrite URL for a file
+ * Generate a public Appwrite URL for a fileId
  */
 export function getPropertyImageUrl(fileId: string | null): string | null {
   if (!fileId) return null;
@@ -33,7 +32,7 @@ export function getPropertyImageUrl(fileId: string | null): string | null {
 
   if (!bucketId || !projectId) return null;
 
-  return `${endpoint}/storage/buckets/${encodeURIComponent(
+  return `${endpoint}/v1/storage/buckets/${encodeURIComponent(
     bucketId
   )}/files/${encodeURIComponent(fileId)}/view?project=${encodeURIComponent(
     projectId
@@ -41,18 +40,12 @@ export function getPropertyImageUrl(fileId: string | null): string | null {
 }
 
 /**
- * Upload property images to Appwrite Storage and return file IDs.
- * Optionally, store public URLs in Supabase for frontend use.
+ * Upload property images to Appwrite Storage and return fileIds
  */
 export async function uploadPropertyImages(
-  propertyId: string,
-  imageFiles?: ImageFiles,
-  saveToSupabase = true
+  imageFiles?: ImageFiles
 ): Promise<ImageIds> {
-  console.log(
-    "🖼 [uploadPropertyImages] Starting upload for property:",
-    propertyId
-  );
+  console.log("🖼 [uploadPropertyImages] Starting upload...");
 
   const imageIds: ImageIds = {};
 
@@ -69,19 +62,9 @@ export async function uploadPropertyImages(
         imageFiles[key].buffer,
         imageFiles[key].name
       );
+
       imageIds[key] = fileId;
       console.log(`✅ Uploaded ${key}, fileId =`, fileId);
-
-      if (saveToSupabase) {
-        const url = getPropertyImageUrl(fileId);
-        await supabase.from("property_images").upsert({
-          property_id: propertyId,
-          key,
-          url,
-          file_id: fileId,
-        });
-        console.log(`✅ Saved ${key} URL to Supabase:`, url);
-      }
     } catch (err) {
       console.error(`❌ Failed to upload ${key}:`, err);
       imageIds[key] = null;
@@ -93,17 +76,10 @@ export async function uploadPropertyImages(
 }
 
 /**
- * Delete property images from Appwrite Storage and optionally from Supabase
+ * Delete property images from Appwrite Storage
  */
-export async function deletePropertyImages(
-  propertyId: string,
-  imageIds: ImageIds,
-  deleteFromSupabase = true
-) {
-  console.log(
-    "🗑 [deletePropertyImages] Starting deletion for property:",
-    propertyId
-  );
+export async function deletePropertyImages(imageIds: ImageIds) {
+  console.log("🗑 [deletePropertyImages] Starting deletion...");
 
   for (const key of IMAGE_KEYS) {
     const fileId = imageIds[key];
@@ -115,35 +91,23 @@ export async function deletePropertyImages(
     try {
       console.log(`➡️ Deleting ${key}, fileId =`, fileId);
       await storage.deleteFile(process.env.APPWRITE_BUCKET_ID!, fileId);
-
-      if (deleteFromSupabase) {
-        await supabase
-          .from("property_images")
-          .delete()
-          .eq("property_id", propertyId)
-          .eq("key", key);
-        console.log(`✅ Deleted ${key} from Supabase`);
-      }
+      console.log(`✅ Deleted ${key}`);
     } catch (err) {
       console.error(`❌ Failed to delete ${key}:`, err);
     }
   }
 
-  console.log(
-    "✅ [deletePropertyImages] Completed deletion for property:",
-    propertyId
-  );
+  console.log("✅ [deletePropertyImages] Completed deletion.");
 }
 
 /**
  * Get the public URL for a single property image by fileId
  */
-export async function getPropertyImageSignedUrl(
+export function getPropertyImageSignedUrl(
   fileId: string | null
-): Promise<string | null> {
+): string | null {
   if (!fileId) return null;
   try {
-    // Node.js cannot use getFilePreview().href; generate URL manually
     return getPropertyImageUrl(fileId);
   } catch (err) {
     console.error("❌ Failed to generate signed URL:", err);
