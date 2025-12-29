@@ -15,6 +15,7 @@ export function formatProperty(row: any) {
 
   console.log("📝 [formatProperty] Formatting row:", row?.$id);
 
+  // Base property fields
   const base = {
     $id: row.$id,
     title: row.title || "",
@@ -58,6 +59,9 @@ export function formatProperty(row: any) {
     updatedAt: row.$updatedAt || null,
   };
 
+  console.log("ℹ️ [formatProperty] Base property data:", base);
+
+  // Process images
   const images: Record<
     string,
     { fileId: string | null; previewUrl: string | null }
@@ -65,13 +69,14 @@ export function formatProperty(row: any) {
 
   IMAGE_KEYS.forEach((key) => {
     const fileId = row[key] || null;
-    images[key] = {
-      fileId,
-      previewUrl: getPreviewUrl(fileId),
-    };
+    const previewUrl = getPreviewUrl(fileId);
+    images[key] = { fileId, previewUrl };
+    console.log(
+      `🖼 [formatProperty] Image key=${key} fileId=${fileId} previewUrl=${previewUrl}`
+    );
   });
 
-  console.log("✅ [formatProperty] Finished formatting:", base.$id);
+  console.log("✅ [formatProperty] Finished formatting property:", base.$id);
 
   return { ...base, images };
 }

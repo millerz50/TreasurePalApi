@@ -1,4 +1,3 @@
-// server/services/propertyImages.ts
 import { Client, Storage } from "node-appwrite";
 import { uploadToAppwriteBucket } from "../../lib/uploadToAppwrite";
 import { supabase } from "../../superbase/supabase";
@@ -19,59 +18,59 @@ export const IMAGE_KEYS = [
 ] as const;
 
 type ImageFiles = Record<string, { buffer: Buffer; name: string }>;
-type ImageUrls = Record<string, string | null>;
+type ImageIds = Record<string, string | null>;
 
 /**
- * Upload property images to Appwrite Storage and return public URLs.
- * Optionally, store URLs in Supabase table "property_images".
+ * Upload property images to Appwrite Storage and return file IDs.
+ * Optionally, track URLs in Supabase (recommended).
  */
 export async function uploadPropertyImages(
   propertyId: string,
   imageFiles?: ImageFiles,
   saveToSupabase = true
-): Promise<ImageUrls> {
+): Promise<ImageIds> {
   console.log("🖼 [uploadPropertyImages] Uploading images...");
 
-  const imageUrls: ImageUrls = {};
+  const imageIds: ImageIds = {};
 
   for (const key of IMAGE_KEYS) {
     if (!imageFiles?.[key]) {
-      imageUrls[key] = null;
+      imageIds[key] = null;
       continue;
     }
 
     console.log(`➡️ Uploading ${key}...`);
-    // Upload to Appwrite
+    // Upload to Appwrite and get fileId
     const { fileId } = await uploadToAppwriteBucket(
       imageFiles[key].buffer,
       imageFiles[key].name
     );
 
-    // Construct public URL
-    const url = `${process.env.APPWRITE_ENDPOINT}/storage/buckets/${process.env.APPWRITE_BUCKET_ID}/files/${fileId}/view`;
-    imageUrls[key] = url;
+    imageIds[key] = fileId;
 
-    console.log(`✅ Uploaded ${key}:`, url);
+    console.log(`✅ Uploaded ${key}: fileId =`, fileId);
 
-    // Optional: save to Supabase for image tracking
+    // Optional: save public URL in Supabase for tracking
     if (saveToSupabase) {
+      const url = `${process.env.APPWRITE_ENDPOINT}/storage/buckets/${process.env.APPWRITE_BUCKET_ID}/files/${fileId}/view`;
       await supabase.from("property_images").upsert({
         property_id: propertyId,
         key,
         url,
+        file_id: fileId,
       });
     }
   }
 
-  return imageUrls;
+  return imageIds;
 }
 
 /**
- * Delete property images from Appwrite Storage and optionally from Supabase.
+ * Delete property images from Appwrite Storage and optionally Supabase.
  */
 export async function deletePropertyImages(
   propertyId: string,
-  images: ImageUrls,
+  imageIds: ImageIds,
   deleteFromSupabase = true
 ) {
   console.log(
@@ -80,12 +79,10 @@ export async function deletePropertyImages(
   );
 
   for (const key of IMAGE_KEYS) {
-    const url = images[key];
-    if (!url) continue;
+    const fileId = imageIds[key];
+    if (!fileId) continue;
 
-    const fileId = url.split("/").pop()!;
-    console.log(`➡️ Deleting ${key}:`, fileId);
-
+    console.log(`➡️ Deleting ${key}: fileId =`, fileId);
     await storage.deleteFile(process.env.APPWRITE_BUCKET_ID!, fileId);
 
     if (deleteFromSupabase) {
