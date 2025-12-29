@@ -19,7 +19,7 @@ function getErrorMessage(err: unknown): string {
 
 /**
  * Upload images → Storage
- * Returns: { frontElevation: url, southView: url, ... }
+ * Returns: { frontElevation: fileId, southView: fileId, ... }
  */
 async function uploadPropertyImages(
   imageFiles?: Record<string, { buffer: Buffer; name: string }>
@@ -33,13 +33,13 @@ async function uploadPropertyImages(
     }
 
     const { buffer, name } = imageFiles[key];
-    const { fileId } = await uploadToAppwriteBucket(buffer, name);
-    const file = await storage.getFile(process.env.APPWRITE_BUCKET_ID!, fileId);
-
-    // Store the Appwrite file URL in property document
-    images[key] = file.$id
-      ? `${process.env.APPWRITE_ENDPOINT}/storage/buckets/${process.env.APPWRITE_BUCKET_ID}/files/${fileId}/view`
-      : null;
+    try {
+      const { fileId } = await uploadToAppwriteBucket(buffer, name);
+      images[key] = fileId;
+    } catch (err) {
+      console.error(`Failed to upload ${key}:`, getErrorMessage(err));
+      images[key] = null;
+    }
   }
 
   return images;
@@ -102,6 +102,7 @@ export async function createProperty(
 
   const coords = parseCoordinates(payload.coordinates);
 
+  // Upload images and get fileIds
   const images = await uploadPropertyImages(imageFiles);
 
   const propertyDoc = await databases.createDocument(
@@ -124,7 +125,7 @@ export async function createProperty(
       approvedBy: null,
       approvedAt: null,
       url: payload.url ?? `/properties/${ID.unique()}`,
-      ...images, // store file URLs directly
+      ...images, // store only fileIds
     },
     buildPropertyPermissions(accountId)
   );
@@ -221,10 +222,10 @@ export async function deleteProperty(
     throw new Error("Not authorized");
   }
 
-  // Optionally delete images from Appwrite storage
+  // Delete images from Appwrite storage
   for (const key of IMAGE_KEYS) {
     if (property[key]) {
-      const fileId = property[key].split("/").pop(); // extract fileId from URL
+      const fileId = property[key]; // fileId is now stored directly
       if (fileId)
         await storage.deleteFile(process.env.APPWRITE_BUCKET_ID!, fileId);
     }
