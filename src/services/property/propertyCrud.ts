@@ -23,7 +23,6 @@ export async function listProperties(limit = 100) {
     String(limit)
   );
 
-  // Fetch amenities from Supabase
   const formatted = await Promise.all(
     res.documents.map(async (doc) => {
       const { data: amenitiesRes } = await supabase
@@ -58,7 +57,7 @@ export async function getPropertyById(id: string) {
   });
 }
 
-/** Create a property (agent) */
+/** Create a property (agent only) */
 export async function createProperty(
   payload: any,
   imageFiles?: Record<string, { buffer: Buffer; name: string }>
@@ -74,8 +73,8 @@ export async function createProperty(
 
   const coords = parseCoordinates(payload.coordinates);
 
-  // Upload images
-  const imageIds: Record<string, string | null> = {};
+  // Upload images to bucket and get URLs
+  const imageUrls: Record<string, string | null> = {};
   if (imageFiles) {
     for (const key of IMAGE_KEYS) {
       if (imageFiles[key]) {
@@ -83,14 +82,18 @@ export async function createProperty(
           imageFiles[key].buffer,
           imageFiles[key].name
         );
-        imageIds[key] = fileId;
+
+        // Construct public URL for storage
+        imageUrls[
+          key
+        ] = `${process.env.APPWRITE_ENDPOINT}/storage/buckets/${process.env.APPWRITE_BUCKET_ID}/files/${fileId}/view`;
       } else {
-        imageIds[key] = null;
+        imageUrls[key] = null;
       }
     }
   }
 
-  // Create property record in Appwrite (without amenities)
+  // Create property document
   const record = {
     ...payload,
     ...coords,
@@ -99,7 +102,7 @@ export async function createProperty(
     published: false,
     approvedBy: null,
     approvedAt: null,
-    ...imageIds,
+    ...imageUrls,
   };
 
   const doc = await databases.createDocument(
@@ -141,21 +144,24 @@ export async function updateProperty(
 
   const coords = parseCoordinates(updates.coordinates);
 
-  const imageIds: Record<string, string> = {};
+  // Upload new images and replace old URLs
+  const imageUrls: Record<string, string | null> = {};
   if (imageFiles) {
     for (const key of IMAGE_KEYS) {
       if (imageFiles[key]) {
+        // Delete old file if exists
         if (existing[key]) {
-          await storage.deleteFile(
-            process.env.APPWRITE_BUCKET_ID!,
-            existing[key]
-          );
+          const oldFileId = existing[key].split("/").pop()!;
+          await storage.deleteFile(process.env.APPWRITE_BUCKET_ID!, oldFileId);
         }
+
         const { fileId } = await uploadToAppwriteBucket(
           imageFiles[key].buffer,
           imageFiles[key].name
         );
-        imageIds[key] = fileId;
+        imageUrls[
+          key
+        ] = `${process.env.APPWRITE_ENDPOINT}/storage/buckets/${process.env.APPWRITE_BUCKET_ID}/files/${fileId}/view`;
       }
     }
   }
@@ -163,7 +169,7 @@ export async function updateProperty(
   const payload = {
     ...updates,
     ...coords,
-    ...imageIds,
+    ...imageUrls,
   };
 
   const doc = await databases.updateDocument(
@@ -173,7 +179,7 @@ export async function updateProperty(
     payload
   );
 
-  // Update amenities in Supabase if provided
+  // Update amenities in Supabase
   if (updates.amenities) {
     const amenitiesArray = Array.isArray(updates.amenities)
       ? updates.amenities
@@ -181,8 +187,8 @@ export async function updateProperty(
     await supabase
       .from("property_amenities")
       .upsert({ property_id: id, amenities: amenitiesArray });
+    updates.amenities = amenitiesArray;
   } else {
-    // fetch existing amenities
     const { data: amenitiesRes } = await supabase
       .from("property_amenities")
       .select("amenities")
@@ -210,10 +216,11 @@ export async function deleteProperty(
     throw new Error("Not authorized");
   }
 
-  // Delete images from Appwrite
+  // Delete images from bucket
   for (const key of IMAGE_KEYS) {
     if (existing[key]) {
-      await storage.deleteFile(process.env.APPWRITE_BUCKET_ID!, existing[key]);
+      const fileId = existing[key].split("/").pop()!;
+      await storage.deleteFile(process.env.APPWRITE_BUCKET_ID!, fileId);
     }
   }
 

@@ -18,7 +18,7 @@ export function formatProperty(row: any) {
   const base = {
     $id: row.$id,
     title: row.title || "",
-    price: row.price || 0,
+    price: typeof row.price === "number" ? row.price : Number(row.price || 0),
     location: row.location || "",
     address: row.address || "",
     rooms: typeof row.rooms === "number" ? row.rooms : Number(row.rooms || 0),
@@ -29,8 +29,14 @@ export function formatProperty(row: any) {
     amenities: Array.isArray(row.amenities)
       ? row.amenities
       : fromCsv(row.amenities || ""),
-    locationLat: row.locationLat !== undefined ? Number(row.locationLat) : null,
-    locationLng: row.locationLng !== undefined ? Number(row.locationLng) : null,
+    locationLat:
+      row.locationLat !== undefined && row.locationLat !== null
+        ? Number(row.locationLat)
+        : null,
+    locationLng:
+      row.locationLng !== undefined && row.locationLng !== null
+        ? Number(row.locationLng)
+        : null,
     agentId: row.agentId || null,
     published: !!row.published,
     approvedBy: row.approvedBy || null,
@@ -38,7 +44,7 @@ export function formatProperty(row: any) {
     depositAvailable: !!row.depositAvailable,
     depositOption: row.depositOption || "none",
     depositPercentage:
-      row.depositPercentage !== undefined
+      row.depositPercentage !== undefined && row.depositPercentage !== null
         ? Number(row.depositPercentage)
         : null,
     website: row.website || "",
@@ -61,10 +67,11 @@ export function formatProperty(row: any) {
     const fileId = row[key] || null;
     images[key] = {
       fileId,
-      previewUrl: fileId ? getPreviewUrl(fileId) : null,
+      previewUrl: getPreviewUrl(fileId),
     };
   });
 
   console.log("✅ [formatProperty] Finished formatting:", base.$id);
+
   return { ...base, images };
 }

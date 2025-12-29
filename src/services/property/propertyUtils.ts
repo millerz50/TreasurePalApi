@@ -5,6 +5,11 @@
 
 /* ------------------ Coordinates ------------------ */
 
+/**
+ * Parse coordinates from multiple formats into a standard object
+ * @param value - Coordinates as [lat, lng], "lat,lng", or { lat, lng } object
+ * @returns { locationLat?, locationLng? }
+ */
 export function parseCoordinates(value: unknown): {
   locationLat?: number;
   locationLng?: number;
@@ -22,19 +27,19 @@ export function parseCoordinates(value: unknown): {
 
   // "lat,lng"
   if (typeof value === "string") {
-    const [lat, lng] = value.split(",").map((v) => Number(v.trim()));
-
+    const [latStr, lngStr] = value.split(",");
+    const lat = Number(latStr.trim());
+    const lng = Number(lngStr.trim());
     if (!Number.isNaN(lat) && !Number.isNaN(lng)) {
       return { locationLat: lat, locationLng: lng };
     }
   }
 
-  // { lat, lng } / { latitude, longitude }
-  if (typeof value === "object") {
-    const v = value as any;
+  // { lat, lng } / { latitude, longitude } / { locationLat, locationLng }
+  if (typeof value === "object" && value !== null) {
+    const v = value as Record<string, unknown>;
     const lat = Number(v.lat ?? v.latitude ?? v.locationLat);
     const lng = Number(v.lng ?? v.longitude ?? v.locationLng);
-
     if (!Number.isNaN(lat) && !Number.isNaN(lng)) {
       return { locationLat: lat, locationLng: lng };
     }
@@ -45,6 +50,11 @@ export function parseCoordinates(value: unknown): {
 
 /* ------------------ Storage ------------------ */
 
+/**
+ * Generate Appwrite preview URL for a given fileId
+ * @param fileId - Appwrite file ID
+ * @returns preview URL or null if not available
+ */
 export function getPreviewUrl(
   fileId: string | null | undefined
 ): string | null {
@@ -67,7 +77,8 @@ export function getPreviewUrl(
 
 /**
  * Converts a comma-separated string into an array of trimmed strings
- * @param value string | null | undefined
+ * @param value - CSV string
+ * @returns array of trimmed strings
  */
 export function fromCsv(value: string | null | undefined): string[] {
   if (!value) return [];

@@ -1,5 +1,7 @@
+// server/services/propertyImages.ts
 import { Client, Storage } from "node-appwrite";
 import { uploadToAppwriteBucket } from "../../lib/uploadToAppwrite";
+import { supabase } from "../../superbase/supabase";
 
 const client = new Client()
   .setEndpoint(process.env.APPWRITE_ENDPOINT!)
@@ -16,40 +18,87 @@ export const IMAGE_KEYS = [
   "floorPlan",
 ] as const;
 
+type ImageFiles = Record<string, { buffer: Buffer; name: string }>;
+type ImageUrls = Record<string, string | null>;
+
+/**
+ * Upload property images to Appwrite Storage and return public URLs.
+ * Optionally, store URLs in Supabase table "property_images".
+ */
 export async function uploadPropertyImages(
-  imageFiles?: Record<string, { buffer: Buffer; name: string }>
-): Promise<Record<string, string | null>> {
+  propertyId: string,
+  imageFiles?: ImageFiles,
+  saveToSupabase = true
+): Promise<ImageUrls> {
   console.log("🖼 [uploadPropertyImages] Uploading images...");
-  const imageIds: Record<string, string | null> = {};
+
+  const imageUrls: ImageUrls = {};
+
   for (const key of IMAGE_KEYS) {
-    if (imageFiles?.[key]) {
-      console.log(`➡️ Uploading ${key}...`);
-      const { fileId } = await uploadToAppwriteBucket(
-        imageFiles[key].buffer,
-        imageFiles[key].name
-      );
-      imageIds[key] = fileId;
-      console.log(`✅ Uploaded ${key}:`, fileId);
-    } else {
-      imageIds[key] = null;
+    if (!imageFiles?.[key]) {
+      imageUrls[key] = null;
+      continue;
+    }
+
+    console.log(`➡️ Uploading ${key}...`);
+    // Upload to Appwrite
+    const { fileId } = await uploadToAppwriteBucket(
+      imageFiles[key].buffer,
+      imageFiles[key].name
+    );
+
+    // Construct public URL
+    const url = `${process.env.APPWRITE_ENDPOINT}/storage/buckets/${process.env.APPWRITE_BUCKET_ID}/files/${fileId}/view`;
+    imageUrls[key] = url;
+
+    console.log(`✅ Uploaded ${key}:`, url);
+
+    // Optional: save to Supabase for image tracking
+    if (saveToSupabase) {
+      await supabase.from("property_images").upsert({
+        property_id: propertyId,
+        key,
+        url,
+      });
     }
   }
-  return imageIds;
+
+  return imageUrls;
 }
 
-export async function deletePropertyImages(row: any) {
+/**
+ * Delete property images from Appwrite Storage and optionally from Supabase.
+ */
+export async function deletePropertyImages(
+  propertyId: string,
+  images: ImageUrls,
+  deleteFromSupabase = true
+) {
   console.log(
     "🗑 [deletePropertyImages] Deleting images for property:",
-    row?.$id
+    propertyId
   );
+
   for (const key of IMAGE_KEYS) {
-    if (row[key]) {
-      console.log(`➡️ Deleting ${key}:`, row[key]);
-      await storage.deleteFile(process.env.APPWRITE_BUCKET_ID!, row[key]);
+    const url = images[key];
+    if (!url) continue;
+
+    const fileId = url.split("/").pop()!;
+    console.log(`➡️ Deleting ${key}:`, fileId);
+
+    await storage.deleteFile(process.env.APPWRITE_BUCKET_ID!, fileId);
+
+    if (deleteFromSupabase) {
+      await supabase
+        .from("property_images")
+        .delete()
+        .eq("property_id", propertyId)
+        .eq("key", key);
     }
   }
+
   console.log(
     "✅ [deletePropertyImages] Completed cleanup for property:",
-    row?.$id
+    propertyId
   );
 }

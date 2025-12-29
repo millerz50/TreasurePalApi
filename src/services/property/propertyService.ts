@@ -1,20 +1,14 @@
 // server/services/property/propertyService.ts
-import { ID, Query } from "node-appwrite";
+import { ID } from "node-appwrite";
 import { uploadToAppwriteBucket } from "../../lib/uploadToAppwrite";
 import { supabase } from "../../superbase/supabase";
-import {
-  databases,
-  DB_ID,
-  PROPERTIES_COLLECTION,
-  PROPERTY_MEDIA_COLLECTION,
-  storage,
-} from "./client";
+import { databases, DB_ID, PROPERTIES_COLLECTION, storage } from "./client";
 import { formatProperty } from "./propertyFormatter";
 import { buildPropertyPermissions } from "./propertyPermissions";
 import { validateAgent } from "./propertyValidation";
 import { IMAGE_KEYS, parseCoordinates } from "./utils";
 
-/* --------------------------------- helpers --------------------------------- */
+/* ------------------------------- helpers --------------------------------- */
 
 function getErrorMessage(err: unknown): string {
   if (!err) return "Unknown error";
@@ -24,19 +18,17 @@ function getErrorMessage(err: unknown): string {
 }
 
 /**
- * Upload images → Storage → property_media collection
- * Returns: { frontElevation: mediaDocId, southView: mediaDocId, ... }
+ * Upload images → Storage
+ * Returns: { frontElevation: url, southView: url, ... }
  */
-async function uploadPropertyMedia(
-  propertyId: string,
-  accountId: string,
+async function uploadPropertyImages(
   imageFiles?: Record<string, { buffer: Buffer; name: string }>
 ): Promise<Record<string, string | null>> {
-  const mediaMap: Record<string, string | null> = {};
+  const images: Record<string, string | null> = {};
 
   for (const key of IMAGE_KEYS) {
     if (!imageFiles?.[key]) {
-      mediaMap[key] = null;
+      images[key] = null;
       continue;
     }
 
@@ -44,28 +36,16 @@ async function uploadPropertyMedia(
     const { fileId } = await uploadToAppwriteBucket(buffer, name);
     const file = await storage.getFile(process.env.APPWRITE_BUCKET_ID!, fileId);
 
-    const mediaDoc = await databases.createDocument(
-      DB_ID,
-      PROPERTY_MEDIA_COLLECTION,
-      ID.unique(),
-      {
-        propertyId,
-        fileId,
-        key,
-        mimeType: file.mimeType,
-        size: file.sizeOriginal,
-        createdBy: accountId,
-      },
-      buildPropertyPermissions(accountId)
-    );
-
-    mediaMap[key] = mediaDoc.$id;
+    // Store the Appwrite file URL in property document
+    images[key] = file.$id
+      ? `${process.env.APPWRITE_ENDPOINT}/storage/buckets/${process.env.APPWRITE_BUCKET_ID}/files/${fileId}/view`
+      : null;
   }
 
-  return mediaMap;
+  return images;
 }
 
-/* ----------------------------------- CRUD ---------------------------------- */
+/* ------------------------------- CRUD ----------------------------------- */
 
 export async function listProperties(limit = 100) {
   const res = await databases.listDocuments(
@@ -100,12 +80,6 @@ export async function getPropertyById(id: string) {
     id
   );
 
-  const media = await databases.listDocuments(
-    DB_ID,
-    PROPERTY_MEDIA_COLLECTION,
-    [Query.equal("propertyId", id)]
-  );
-
   const { data: amenitiesRes } = await supabase
     .from("property_amenities")
     .select("amenities")
@@ -114,7 +88,6 @@ export async function getPropertyById(id: string) {
 
   return formatProperty({
     ...property,
-    media: media.documents,
     amenities: amenitiesRes?.amenities || [],
   });
 }
@@ -129,7 +102,8 @@ export async function createProperty(
 
   const coords = parseCoordinates(payload.coordinates);
 
-  // Create property in Appwrite (without amenities)
+  const images = await uploadPropertyImages(imageFiles);
+
   const propertyDoc = await databases.createDocument(
     DB_ID,
     PROPERTIES_COLLECTION,
@@ -149,23 +123,10 @@ export async function createProperty(
       published: false,
       approvedBy: null,
       approvedAt: null,
+      url: payload.url ?? `/properties/${ID.unique()}`,
+      ...images, // store file URLs directly
     },
     buildPropertyPermissions(accountId)
-  );
-
-  // Upload images
-  const mediaIds = await uploadPropertyMedia(
-    propertyDoc.$id,
-    accountId,
-    imageFiles
-  );
-
-  // Update property with media IDs
-  const updated = await databases.updateDocument(
-    DB_ID,
-    PROPERTIES_COLLECTION,
-    propertyDoc.$id,
-    mediaIds
   );
 
   // Store amenities in Supabase
@@ -177,7 +138,7 @@ export async function createProperty(
     amenities: amenitiesArray,
   });
 
-  return formatProperty({ ...updated, amenities: amenitiesArray });
+  return formatProperty({ ...propertyDoc, amenities: amenitiesArray });
 }
 
 /** Update property */
@@ -200,26 +161,10 @@ export async function updateProperty(
 
   const coords = parseCoordinates(updates.coordinates);
 
+  // Upload new images if provided
+  let images: Record<string, string | null> = {};
   if (imageFiles) {
-    const oldMedia = await databases.listDocuments(
-      DB_ID,
-      PROPERTY_MEDIA_COLLECTION,
-      [Query.equal("propertyId", id)]
-    );
-
-    for (const media of oldMedia.documents) {
-      await storage.deleteFile(process.env.APPWRITE_BUCKET_ID!, media.fileId);
-      await databases.deleteDocument(
-        DB_ID,
-        PROPERTY_MEDIA_COLLECTION,
-        media.$id
-      );
-    }
-
-    Object.assign(
-      updates,
-      await uploadPropertyMedia(id, accountId, imageFiles)
-    );
+    images = await uploadPropertyImages(imageFiles);
   }
 
   const doc = await databases.updateDocument(DB_ID, PROPERTIES_COLLECTION, id, {
@@ -235,6 +180,7 @@ export async function updateProperty(
     ...(updates.status !== undefined && { status: updates.status }),
     ...(updates.country !== undefined && { country: updates.country }),
     ...coords,
+    ...images,
   });
 
   // Update amenities in Supabase
@@ -275,15 +221,13 @@ export async function deleteProperty(
     throw new Error("Not authorized");
   }
 
-  const media = await databases.listDocuments(
-    DB_ID,
-    PROPERTY_MEDIA_COLLECTION,
-    [Query.equal("propertyId", id)]
-  );
-
-  for (const item of media.documents) {
-    await storage.deleteFile(process.env.APPWRITE_BUCKET_ID!, item.fileId);
-    await databases.deleteDocument(DB_ID, PROPERTY_MEDIA_COLLECTION, item.$id);
+  // Optionally delete images from Appwrite storage
+  for (const key of IMAGE_KEYS) {
+    if (property[key]) {
+      const fileId = property[key].split("/").pop(); // extract fileId from URL
+      if (fileId)
+        await storage.deleteFile(process.env.APPWRITE_BUCKET_ID!, fileId);
+    }
   }
 
   await databases.deleteDocument(DB_ID, PROPERTIES_COLLECTION, id);
