@@ -1,6 +1,7 @@
 // server/services/property/propertyService.ts
 import { ID, Query } from "node-appwrite";
 import { uploadToAppwriteBucket } from "../../lib/uploadToAppwrite";
+import { supabase } from "../../superbase/supabase";
 import {
   databases,
   DB_ID,
@@ -11,7 +12,7 @@ import {
 import { formatProperty } from "./propertyFormatter";
 import { buildPropertyPermissions } from "./propertyPermissions";
 import { validateAgent } from "./propertyValidation";
-import { IMAGE_KEYS, parseCoordinates, toCsv } from "./utils";
+import { IMAGE_KEYS, parseCoordinates } from "./utils";
 
 /* --------------------------------- helpers --------------------------------- */
 
@@ -40,7 +41,6 @@ async function uploadPropertyMedia(
     }
 
     const { buffer, name } = imageFiles[key];
-
     const { fileId } = await uploadToAppwriteBucket(buffer, name);
     const file = await storage.getFile(process.env.APPWRITE_BUCKET_ID!, fileId);
 
@@ -74,7 +74,23 @@ export async function listProperties(limit = 100) {
     [],
     String(limit)
   );
-  return res.documents.map(formatProperty);
+
+  const formatted = await Promise.all(
+    res.documents.map(async (doc) => {
+      const { data: amenitiesRes } = await supabase
+        .from("property_amenities")
+        .select("amenities")
+        .eq("property_id", doc.$id)
+        .single();
+
+      return formatProperty({
+        ...doc,
+        amenities: amenitiesRes?.amenities || [],
+      });
+    })
+  );
+
+  return formatted;
 }
 
 export async function getPropertyById(id: string) {
@@ -90,9 +106,16 @@ export async function getPropertyById(id: string) {
     [Query.equal("propertyId", id)]
   );
 
+  const { data: amenitiesRes } = await supabase
+    .from("property_amenities")
+    .select("amenities")
+    .eq("property_id", id)
+    .single();
+
   return formatProperty({
     ...property,
     media: media.documents,
+    amenities: amenitiesRes?.amenities || [],
   });
 }
 
@@ -120,7 +143,6 @@ export async function createProperty(
       type: payload.type ?? "",
       status: "pending",
       country: payload.country ?? "",
-      amenities: toCsv(payload.amenities),
       ...coords,
       agentId: accountId,
       published: false,
@@ -136,6 +158,7 @@ export async function createProperty(
     imageFiles
   );
 
+  // Update property document with media IDs
   const updated = await databases.updateDocument(
     DB_ID,
     PROPERTIES_COLLECTION,
@@ -143,7 +166,16 @@ export async function createProperty(
     mediaIds
   );
 
-  return formatProperty(updated);
+  // Save amenities in Supabase
+  const amenitiesArray = Array.isArray(payload.amenities)
+    ? payload.amenities
+    : [];
+  await supabase.from("property_amenities").insert({
+    property_id: propertyDoc.$id,
+    amenities: amenitiesArray,
+  });
+
+  return formatProperty({ ...updated, amenities: amenitiesArray });
 }
 
 /** Update property */
@@ -190,33 +222,39 @@ export async function updateProperty(
 
   const doc = await databases.updateDocument(DB_ID, PROPERTIES_COLLECTION, id, {
     ...(updates.title !== undefined && { title: updates.title }),
-    ...(updates.price !== undefined && {
-      price: Number(updates.price),
-    }),
-    ...(updates.location !== undefined && {
-      location: updates.location,
-    }),
-    ...(updates.address !== undefined && {
-      address: updates.address,
-    }),
-    ...(updates.rooms !== undefined && {
-      rooms: Number(updates.rooms),
-    }),
+    ...(updates.price !== undefined && { price: Number(updates.price) }),
+    ...(updates.location !== undefined && { location: updates.location }),
+    ...(updates.address !== undefined && { address: updates.address }),
+    ...(updates.rooms !== undefined && { rooms: Number(updates.rooms) }),
     ...(updates.description !== undefined && {
       description: updates.description,
     }),
     ...(updates.type !== undefined && { type: updates.type }),
     ...(updates.status !== undefined && { status: updates.status }),
-    ...(updates.country !== undefined && {
-      country: updates.country,
-    }),
-    ...(updates.amenities !== undefined && {
-      amenities: toCsv(updates.amenities),
-    }),
+    ...(updates.country !== undefined && { country: updates.country }),
     ...coords,
   });
 
-  return formatProperty(doc);
+  // Update amenities in Supabase if provided
+  if (updates.amenities) {
+    const amenitiesArray = Array.isArray(updates.amenities)
+      ? updates.amenities
+      : [];
+    await supabase.from("property_amenities").upsert({
+      property_id: id,
+      amenities: amenitiesArray,
+    });
+    updates.amenities = amenitiesArray;
+  } else {
+    const { data: amenitiesRes } = await supabase
+      .from("property_amenities")
+      .select("amenities")
+      .eq("property_id", id)
+      .single();
+    updates.amenities = amenitiesRes?.amenities || [];
+  }
+
+  return formatProperty({ ...doc, amenities: updates.amenities });
 }
 
 /** Delete property */
@@ -247,4 +285,7 @@ export async function deleteProperty(
   }
 
   await databases.deleteDocument(DB_ID, PROPERTIES_COLLECTION, id);
+
+  // Delete amenities from Supabase
+  await supabase.from("property_amenities").delete().eq("property_id", id);
 }

@@ -1,5 +1,7 @@
+// server/services/propertyService.ts
 import { ID, Query } from "node-appwrite";
 import { uploadToAppwriteBucket } from "../../lib/uploadToAppwrite";
+import { supabase } from "../../superbase/supabase";
 import {
   DB_ID,
   PROPERTIES_COLLECTION,
@@ -8,7 +10,7 @@ import {
   storage,
 } from "./client";
 import { formatProperty } from "./formatters";
-import { IMAGE_KEYS, parseCoordinates, toCsv } from "./utils";
+import { IMAGE_KEYS, parseCoordinates } from "./utils";
 
 /** -------------------- CRUD -------------------- */
 
@@ -20,13 +22,40 @@ export async function listProperties(limit = 100) {
     [],
     String(limit)
   );
-  return res.documents.map(formatProperty);
+
+  // Fetch amenities from Supabase
+  const formatted = await Promise.all(
+    res.documents.map(async (doc) => {
+      const { data: amenitiesRes } = await supabase
+        .from("property_amenities")
+        .select("amenities")
+        .eq("property_id", doc.$id)
+        .single();
+
+      return formatProperty({
+        ...doc,
+        amenities: amenitiesRes?.amenities || [],
+      });
+    })
+  );
+
+  return formatted;
 }
 
 /** Get a property by ID (public) */
 export async function getPropertyById(id: string) {
   const doc = await databases.getDocument(DB_ID, PROPERTIES_COLLECTION, id);
-  return formatProperty(doc);
+
+  const { data: amenitiesRes } = await supabase
+    .from("property_amenities")
+    .select("amenities")
+    .eq("property_id", id)
+    .single();
+
+  return formatProperty({
+    ...doc,
+    amenities: amenitiesRes?.amenities || [],
+  });
 }
 
 /** Create a property (agent) */
@@ -38,7 +67,6 @@ export async function createProperty(
   const agentRes = await databases.listDocuments(DB_ID, USERS_COLLECTION, [
     Query.equal("accountid", String(payload.agentId)),
   ]);
-
   const agentDoc = agentRes.documents[0];
   if (!agentDoc || agentDoc.role !== "agent") {
     throw new Error("Invalid agent or not an agent");
@@ -62,19 +90,18 @@ export async function createProperty(
     }
   }
 
+  // Create property record in Appwrite (without amenities)
   const record = {
     ...payload,
     ...coords,
     agentId: String(payload.agentId),
     rooms: payload.rooms ? Number(payload.rooms) : 0,
-    amenities: toCsv(payload.amenities),
     published: false,
     approvedBy: null,
     approvedAt: null,
     ...imageIds,
   };
 
-  // ✅ NO PERMISSIONS HERE
   const doc = await databases.createDocument(
     DB_ID,
     PROPERTIES_COLLECTION,
@@ -82,7 +109,16 @@ export async function createProperty(
     record
   );
 
-  return formatProperty(doc);
+  // Store amenities in Supabase
+  const amenitiesArray = Array.isArray(payload.amenities)
+    ? payload.amenities
+    : [];
+  await supabase.from("property_amenities").insert({
+    property_id: doc.$id,
+    amenities: amenitiesArray,
+  });
+
+  return formatProperty({ ...doc, amenities: amenitiesArray });
 }
 
 /** Update a property (owner or admin) */
@@ -137,7 +173,25 @@ export async function updateProperty(
     payload
   );
 
-  return formatProperty(doc);
+  // Update amenities in Supabase if provided
+  if (updates.amenities) {
+    const amenitiesArray = Array.isArray(updates.amenities)
+      ? updates.amenities
+      : [];
+    await supabase
+      .from("property_amenities")
+      .upsert({ property_id: id, amenities: amenitiesArray });
+  } else {
+    // fetch existing amenities
+    const { data: amenitiesRes } = await supabase
+      .from("property_amenities")
+      .select("amenities")
+      .eq("property_id", id)
+      .single();
+    updates.amenities = amenitiesRes?.amenities || [];
+  }
+
+  return formatProperty({ ...doc, amenities: updates.amenities });
 }
 
 /** Delete a property (owner or admin) */
@@ -156,11 +210,16 @@ export async function deleteProperty(
     throw new Error("Not authorized");
   }
 
+  // Delete images from Appwrite
   for (const key of IMAGE_KEYS) {
     if (existing[key]) {
       await storage.deleteFile(process.env.APPWRITE_BUCKET_ID!, existing[key]);
     }
   }
 
+  // Delete property document
   await databases.deleteDocument(DB_ID, PROPERTIES_COLLECTION, id);
+
+  // Delete amenities from Supabase
+  await supabase.from("property_amenities").delete().eq("property_id", id);
 }
