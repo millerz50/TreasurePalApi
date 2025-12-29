@@ -1,5 +1,5 @@
 // server/services/propertyImages.ts
-import { Client, Storage } from "node-appwrite";
+import { Client, Databases, Storage } from "node-appwrite";
 import { uploadToAppwriteBucket } from "../../lib/uploadToAppwrite";
 
 const client = new Client()
@@ -8,6 +8,7 @@ const client = new Client()
   .setKey(process.env.APPWRITE_API_KEY!);
 
 const storage = new Storage(client);
+const databases = new Databases(client);
 
 export const IMAGE_KEYS = [
   "frontElevation",
@@ -25,7 +26,6 @@ type ImageIds = Record<string, string | null>;
  */
 export function getPropertyImageUrl(fileId: string | null): string | null {
   if (!fileId) return null;
-
   const endpoint = (process.env.APPWRITE_ENDPOINT || "").replace(/\/+$/, "");
   const bucketId = process.env.APPWRITE_BUCKET_ID;
   const projectId = process.env.APPWRITE_PROJECT_ID;
@@ -40,9 +40,10 @@ export function getPropertyImageUrl(fileId: string | null): string | null {
 }
 
 /**
- * Upload property images to Appwrite Storage and return fileIds
+ * Upload property images to Appwrite Storage, store fileIds in Appwrite DB, and return fileIds
  */
 export async function uploadPropertyImages(
+  propertyId: string,
   imageFiles?: ImageFiles
 ): Promise<ImageIds> {
   console.log("🖼 [uploadPropertyImages] Starting upload...");
@@ -65,8 +66,17 @@ export async function uploadPropertyImages(
 
       imageIds[key] = fileId;
       console.log(`✅ Uploaded ${key}, fileId =`, fileId);
+
+      // Store the fileId in Appwrite database table "properties"
+      await databases.updateDocument(
+        process.env.APPWRITE_DATABASE_ID!,
+        process.env.APPWRITE_PROPERTIES_COLLECTION!,
+        propertyId,
+        { [key]: fileId }
+      );
+      console.log(`✅ Saved ${key} fileId to property ${propertyId}`);
     } catch (err) {
-      console.error(`❌ Failed to upload ${key}:`, err);
+      console.error(`❌ Failed to upload or save ${key}:`, err);
       imageIds[key] = null;
     }
   }
@@ -76,9 +86,13 @@ export async function uploadPropertyImages(
 }
 
 /**
- * Delete property images from Appwrite Storage
+ * Delete property images from Appwrite Storage and optionally remove from DB
  */
-export async function deletePropertyImages(imageIds: ImageIds) {
+export async function deletePropertyImages(
+  propertyId: string,
+  imageIds: ImageIds,
+  removeFromDB = true
+) {
   console.log("🗑 [deletePropertyImages] Starting deletion...");
 
   for (const key of IMAGE_KEYS) {
@@ -91,7 +105,17 @@ export async function deletePropertyImages(imageIds: ImageIds) {
     try {
       console.log(`➡️ Deleting ${key}, fileId =`, fileId);
       await storage.deleteFile(process.env.APPWRITE_BUCKET_ID!, fileId);
-      console.log(`✅ Deleted ${key}`);
+      console.log(`✅ Deleted ${key} from storage`);
+
+      if (removeFromDB) {
+        await databases.updateDocument(
+          process.env.APPWRITE_DATABASE_ID!,
+          process.env.APPWRITE_PROPERTIES_COLLECTION!,
+          propertyId,
+          { [key]: null }
+        );
+        console.log(`✅ Removed ${key} fileId from property ${propertyId}`);
+      }
     } catch (err) {
       console.error(`❌ Failed to delete ${key}:`, err);
     }
