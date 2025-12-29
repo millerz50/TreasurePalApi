@@ -196,28 +196,28 @@ export async function updateProperty(req: Request, res: Response) {
 }
 
 /** Protected: delete property (owner or admin) */
+/** Protected: delete property (owner or admin) */
 export async function deleteProperty(req: Request, res: Response) {
   console.log("🗑 [deleteProperty] id:", req.params.id);
-  try {
-    console.log("   accountId:", (req as any).accountId);
-    console.log("   authUser:", JSON.stringify((req as any).authUser, null, 2));
 
+  try {
     const user = (req as any).authUser;
     if (!user) {
-      console.warn("⛔ [deleteProperty] unauthorized");
       return res.status(401).json({ error: "Unauthorized" });
     }
 
-    // Prefer req.accountId (Appwrite account $id) when calling service if service requires it
-    // Current service.deleteProperty accepts only id; if it requires accountId, update call accordingly.
-    await service.deleteProperty(req.params.id);
+    const accountId = (req as any).accountId ?? user.id;
+    const isAdmin = Array.isArray(user.roles) && user.roles.includes("admin");
+
+    await service.deleteProperty(req.params.id, accountId, isAdmin);
+
     console.log("✅ [deleteProperty] deleted:", req.params.id);
     return res.status(204).send();
   } catch (err: unknown) {
-    console.error("❌ [deleteProperty] error:", getErrorMessage(err));
+    console.error("❌ [deleteProperty] error:", err);
     return res
       .status(400)
-      .json({ error: getErrorMessage(err) || "Bad request" });
+      .json({ error: err instanceof Error ? err.message : "Bad request" });
   }
 }
 
