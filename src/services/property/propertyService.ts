@@ -25,7 +25,7 @@ function getErrorMessage(err: unknown): string {
 
 /**
  * Upload images → Storage → property_media collection
- * Returns: { cover: mediaDocId, image1: mediaDocId, ... }
+ * Returns: { frontElevation: mediaDocId, southView: mediaDocId, ... }
  */
 async function uploadPropertyMedia(
   propertyId: string,
@@ -129,6 +129,7 @@ export async function createProperty(
 
   const coords = parseCoordinates(payload.coordinates);
 
+  // Create property in Appwrite (without amenities)
   const propertyDoc = await databases.createDocument(
     DB_ID,
     PROPERTIES_COLLECTION,
@@ -152,13 +153,14 @@ export async function createProperty(
     buildPropertyPermissions(accountId)
   );
 
+  // Upload images
   const mediaIds = await uploadPropertyMedia(
     propertyDoc.$id,
     accountId,
     imageFiles
   );
 
-  // Update property document with media IDs
+  // Update property with media IDs
   const updated = await databases.updateDocument(
     DB_ID,
     PROPERTIES_COLLECTION,
@@ -166,7 +168,7 @@ export async function createProperty(
     mediaIds
   );
 
-  // Save amenities in Supabase
+  // Store amenities in Supabase
   const amenitiesArray = Array.isArray(payload.amenities)
     ? payload.amenities
     : [];
@@ -235,7 +237,7 @@ export async function updateProperty(
     ...coords,
   });
 
-  // Update amenities in Supabase if provided
+  // Update amenities in Supabase
   if (updates.amenities) {
     const amenitiesArray = Array.isArray(updates.amenities)
       ? updates.amenities
