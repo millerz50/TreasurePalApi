@@ -3,7 +3,6 @@ import { ID } from "node-appwrite";
 import { uploadToAppwriteBucket } from "../../lib/uploadToAppwrite";
 import { supabase } from "../../superbase/supabase";
 import { databases, DB_ID, PROPERTIES_COLLECTION, storage } from "./client";
-import { formatProperty } from "./propertyFormatter";
 import { buildPropertyPermissions } from "./propertyPermissions";
 import { validateAgent } from "./propertyValidation";
 import { IMAGE_KEYS, parseCoordinates } from "./utils";
@@ -43,6 +42,21 @@ async function uploadPropertyImages(
   }
 
   return images;
+}
+
+/**
+ * Normalize raw Appwrite doc → wrap image IDs into `images` object
+ */
+function formatProperty(doc: any) {
+  const images: Record<string, string | null> = {};
+  for (const key of IMAGE_KEYS) {
+    images[key] = doc[key] ?? null;
+  }
+
+  return {
+    ...doc,
+    images,
+  };
 }
 
 /* ------------------------------- CRUD ----------------------------------- */
@@ -125,7 +139,7 @@ export async function createProperty(
       approvedBy: null,
       approvedAt: null,
       url: payload.url ?? `/properties/${ID.unique()}`,
-      ...images, // store only fileIds
+      ...images, // store only fileIds at top level
     },
     buildPropertyPermissions(accountId)
   );
@@ -225,7 +239,7 @@ export async function deleteProperty(
   // Delete images from Appwrite storage
   for (const key of IMAGE_KEYS) {
     if (property[key]) {
-      const fileId = property[key]; // fileId is now stored directly
+      const fileId = property[key]; // fileId is stored directly
       if (fileId)
         await storage.deleteFile(process.env.APPWRITE_BUCKET_ID!, fileId);
     }
