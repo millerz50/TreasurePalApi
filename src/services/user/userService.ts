@@ -1,8 +1,11 @@
+// services/users.ts
 import { Databases, ID, Permission, Query, Role } from "node-appwrite";
 import { getClient, getEnv } from "../../services/lib/env";
 
 const DB_ID = getEnv("APPWRITE_DATABASE_ID")!;
 const USERS_COLLECTION = "users";
+const AGENT_APPLICATIONS_COLLECTION = "agent_applications"; // new collection for applications
+const NOTIFICATIONS_COLLECTION = "notifications"; // optional notifications collection
 
 type UserRole = "user" | "agent" | "admin";
 type UserStatus = "Not Verified" | "Pending" | "Active" | "Suspended";
@@ -15,6 +18,10 @@ function db() {
    CREATE
 ============================ */
 
+/**
+ * Create a user document in the users collection.
+ * Permissions: owner (user accountid) + admin team can read/update; only admin can delete.
+ */
 export async function createUserRow(payload: Record<string, any>) {
   const userId = payload.accountid;
 
@@ -34,6 +41,75 @@ export async function createUserRow(payload: Record<string, any>) {
     // only admin can delete
     Permission.delete(Role.team("admin")),
   ]);
+}
+
+/* ============================
+   AGENT APPLICATIONS (NEW)
+   - Applications are created when a user applies to become an agent.
+   - Admins review applications and call approveApplication to grant agent role.
+   - Applications are readable by admin team only.
+============================ */
+
+/**
+ * Submit an agent application.
+ * Stores application in AGENT_APPLICATIONS_COLLECTION with admin-readable permissions.
+ */
+export async function submitAgentApplication(payload: {
+  accountid: string;
+  userId?: string; // optional duplicate
+  fullName?: string;
+  email?: string;
+  phone?: string;
+  city?: string;
+  licenseNumber?: string | null;
+  agencyId?: string | null;
+  message?: string | null;
+}) {
+  if (!payload || !payload.accountid) {
+    throw new Error("accountid is required to submit an application");
+  }
+
+  const now = new Date().toISOString();
+  const doc = {
+    accountid: payload.accountid,
+    userId: payload.userId ?? null,
+    fullName: payload.fullName ?? null,
+    email: payload.email ?? null,
+    phone: payload.phone ?? null,
+    city: payload.city ?? null,
+    licenseNumber: payload.licenseNumber ?? null,
+    agencyId: payload.agencyId ?? null,
+    message: payload.message ?? null,
+    status: "pending",
+    submittedAt: now,
+    reviewedAt: null,
+    reviewedBy: null,
+    reviewNotes: null,
+  };
+
+  // Create application document; only admin team can read/update/delete it
+  return db().createDocument(
+    DB_ID,
+    AGENT_APPLICATIONS_COLLECTION,
+    ID.unique(),
+    doc,
+    [
+      Permission.read(Role.team("admin")),
+      Permission.update(Role.team("admin")),
+      Permission.delete(Role.team("admin")),
+    ]
+  );
+}
+
+/**
+ * List pending agent applications (admin use).
+ */
+export async function listPendingApplications(limit = 50) {
+  const res = await db().listDocuments(DB_ID, AGENT_APPLICATIONS_COLLECTION, [
+    Query.equal("status", "pending"),
+    Query.limit(limit),
+  ]);
+  return res.documents;
 }
 
 /* ============================
@@ -66,6 +142,18 @@ export async function getUserById(documentId: string) {
   }
 }
 
+export async function getApplicationById(applicationId: string) {
+  try {
+    return await db().getDocument(
+      DB_ID,
+      AGENT_APPLICATIONS_COLLECTION,
+      applicationId
+    );
+  } catch {
+    return null;
+  }
+}
+
 /* ============================
    UPDATE
 ============================ */
@@ -92,7 +180,7 @@ export async function setRoles(documentId: string, roles: UserRole[]) {
 }
 
 /**
- * ✅ OPTION C — APPROVE AGENT
+ * ✅ OPTION C — APPROVE AGENT (internal helper)
  * Adds agent role, keeps others
  */
 export async function approveAgent(documentId: string) {
@@ -112,6 +200,144 @@ export async function approveAgent(documentId: string) {
     status: "Active",
     approvedAt: new Date().toISOString(),
   });
+}
+
+/**
+ * Approve an application (admin action).
+ * - applicationId: id of application document
+ * - adminId: account id or admin identifier performing approval (for audit)
+ * - reviewNotes: optional notes
+ *
+ * Steps:
+ * 1. Fetch application
+ * 2. Find user document by accountid
+ * 3. Call approveAgent(userDocumentId)
+ * 4. Update application status to 'approved' and record reviewer
+ * 5. Optionally create a notification document for the user (admins only)
+ */
+export async function approveApplication(
+  applicationId: string,
+  adminId: string,
+  reviewNotes?: string
+) {
+  // fetch application
+  const application = await getApplicationById(applicationId);
+  if (!application) throw new Error("Application not found");
+
+  if (application.status === "approved") {
+    throw new Error("Application already approved");
+  }
+
+  const accountid = application.accountid;
+  if (!accountid) throw new Error("Application missing accountid");
+
+  // find user document
+  const userDoc = await getUserByAccountId(accountid);
+  if (!userDoc) {
+    throw new Error("User document not found for accountid");
+  }
+
+  // approve user (adds agent role)
+  await approveAgent(userDoc.$id);
+
+  // update application record
+  const now = new Date().toISOString();
+  await db().updateDocument(
+    DB_ID,
+    AGENT_APPLICATIONS_COLLECTION,
+    applicationId,
+    {
+      status: "approved",
+      reviewedAt: now,
+      reviewedBy: adminId,
+      reviewNotes: reviewNotes ?? null,
+    }
+  );
+
+  // optional: create a notification for the user (admins can read/write)
+  try {
+    await db().createDocument(
+      DB_ID,
+      NOTIFICATIONS_COLLECTION,
+      ID.unique(),
+      {
+        accountid,
+        type: "agent_approved",
+        message: "Your agent application has been approved.",
+        createdAt: now,
+        read: false,
+      },
+      [
+        // user can read their own notification
+        Permission.read(Role.user(accountid)),
+        Permission.update(Role.user(accountid)),
+        Permission.delete(Role.team("admin")),
+        Permission.read(Role.team("admin")),
+      ]
+    );
+  } catch (err) {
+    // non-fatal: notification creation failed; log and continue
+    console.warn("Failed to create notification for approved agent:", err);
+  }
+
+  return { success: true, applicationId, userDocumentId: userDoc.$id };
+}
+
+/**
+ * Reject an application (admin action).
+ * - marks application as rejected and records reviewer and notes
+ */
+export async function rejectApplication(
+  applicationId: string,
+  adminId: string,
+  reviewNotes?: string
+) {
+  const application = await getApplicationById(applicationId);
+  if (!application) throw new Error("Application not found");
+
+  if (application.status === "approved") {
+    throw new Error("Cannot reject an already approved application");
+  }
+
+  const now = new Date().toISOString();
+  await db().updateDocument(
+    DB_ID,
+    AGENT_APPLICATIONS_COLLECTION,
+    applicationId,
+    {
+      status: "rejected",
+      reviewedAt: now,
+      reviewedBy: adminId,
+      reviewNotes: reviewNotes ?? null,
+    }
+  );
+
+  // optional: notify user of rejection
+  try {
+    await db().createDocument(
+      DB_ID,
+      NOTIFICATIONS_COLLECTION,
+      ID.unique(),
+      {
+        accountid: application.accountid,
+        type: "agent_rejected",
+        message:
+          "Your agent application was not approved. Please contact support for details.",
+        createdAt: now,
+        read: false,
+      },
+      [
+        Permission.read(Role.user(application.accountid)),
+        Permission.update(Role.user(application.accountid)),
+        Permission.delete(Role.team("admin")),
+        Permission.read(Role.team("admin")),
+      ]
+    );
+  } catch (err) {
+    console.warn("Failed to create rejection notification:", err);
+  }
+
+  return { success: true, applicationId };
 }
 
 /**

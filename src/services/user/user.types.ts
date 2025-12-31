@@ -1,4 +1,4 @@
-// user.types.ts
+/// user.types.ts
 
 /* --------------------
    Roles & Status
@@ -40,6 +40,11 @@ export type SignupPayload = {
    * Appwrite Auth only (OTP / phone verification)
    */
   authPhone?: string;
+
+  /**
+   * Optional profile image upload (File/Blob from client)
+   */
+  profileImage?: File | Blob;
 };
 
 /* --------------------
@@ -68,4 +73,9 @@ export type UserDocumentInput = {
    * Controlled by server/admin only
    */
   status: UserStatus;
+
+  /**
+   * Optional reference to profile image file ID in Appwrite
+   */
+  profileImageId?: string;
 };

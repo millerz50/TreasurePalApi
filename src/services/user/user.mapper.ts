@@ -1,7 +1,7 @@
 // user.mapper.ts
 import type { UserDocumentInput, UserRole, UserStatus } from "./user.types";
 
-type UserDocument = {
+export type UserDocument = {
   accountid: string;
 
   email: string;
@@ -9,7 +9,7 @@ type UserDocument = {
   surname: string;
 
   phone?: string | null;
-  country?: string;
+  country?: string | null;
   location?: string | null;
   dateOfBirth?: string | null;
 
@@ -17,6 +17,9 @@ type UserDocument = {
   status: UserStatus;
 
   credits: number;
+
+  // Optional profile image reference (Appwrite file ID)
+  profileImageId?: string | null;
 
   // ❌ DO NOT define createdAt
   // Appwrite provides $createdAt automatically
@@ -30,12 +33,12 @@ export function toUserDocument(
   return {
     accountid: accountId,
 
-    email: data.email.toLowerCase().trim(),
-    firstName: data.firstName.trim(),
-    surname: data.surname.trim(),
+    email: data.email?.toLowerCase().trim() ?? "",
+    firstName: data.firstName?.trim() ?? "",
+    surname: data.surname?.trim() ?? "",
 
     phone: data.phone ?? null,
-    country: data.country,
+    country: data.country ?? null,
     location: data.location ?? null,
     dateOfBirth: data.dateOfBirth ?? null,
 
@@ -48,5 +51,7 @@ export function toUserDocument(
     status: data.status ?? "Pending",
 
     credits: signupCredits,
+
+    profileImageId: data.profileImageId ?? null,
   };
 }
