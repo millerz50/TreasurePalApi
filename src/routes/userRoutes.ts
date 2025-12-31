@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import express from "express";
+import multer from "multer";
 import sdk, { Client, ID } from "node-appwrite";
 
 import {
@@ -39,34 +40,43 @@ const accounts = new sdk.Account(client);
 const storage = new sdk.Storage(client);
 
 /* ======================================================
+   MULTER CONFIG
+====================================================== */
+const upload = multer({ storage: multer.memoryStorage() });
+
+/* ======================================================
    FILE UPLOAD (Avatar / Profile Image)
    POST /users/upload
 ====================================================== */
-import { Readable } from "stream";
+router.post(
+  "/upload",
+  authMiddleware,
+  upload.single("file"),
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No file provided" });
+      }
 
-router.post("/upload", upload.single("file"), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ error: "No file provided" });
+      const bucketId = process.env.APPWRITE_BUCKET_ID!;
+      // Cast buffer to any so TS stops expecting a browser File
+      const uploaded = await storage.createFile(
+        bucketId,
+        ID.unique(),
+        req.file.buffer as any
+      );
+
+      return res.json({
+        status: "SUCCESS",
+        fileId: uploaded.$id,
+      });
+    } catch (err: any) {
+      return res.status(500).json({
+        error: err?.message || "File upload failed",
+      });
     }
-
-    const bucketId = process.env.APPWRITE_BUCKET_ID!;
-
-    // Convert Buffer to Readable stream
-    const stream = Readable.from(req.file.buffer);
-
-    const uploaded = await storage.createFile(bucketId, ID.unique(), stream);
-
-    return res.json({
-      status: "SUCCESS",
-      fileId: uploaded.$id,
-    });
-  } catch (err: any) {
-    return res.status(500).json({
-      error: err?.message || "File upload failed",
-    });
   }
-});
+);
 
 /* ======================================================
    OTP VERIFICATION
