@@ -9,10 +9,18 @@ export type UserRole = "user" | "agent" | "admin";
 export type UserStatus = "Not Verified" | "Pending" | "Active" | "Suspended";
 
 /* --------------------
+   Node.js-safe Profile Image Payload
+-------------------- */
+export type ProfileImagePayload = {
+  buffer: Buffer; // File content
+  filename: string; // Original filename
+  mimeType: string; // MIME type, e.g., "image/png"
+};
+
+/* --------------------
    Signup API Payload
    (Client → Server)
 -------------------- */
-
 export type SignupPayload = {
   /**
    * Optional — used for migrations or system-created users
@@ -42,9 +50,9 @@ export type SignupPayload = {
   authPhone?: string;
 
   /**
-   * Optional profile image upload (File/Blob from client)
+   * Optional profile image upload (Node.js-safe)
    */
-  profileImage?: File | Blob;
+  profileImage?: ProfileImagePayload;
 };
 
 /* --------------------
@@ -52,7 +60,6 @@ export type SignupPayload = {
    (Server → Database)
    🚫 NO password here
 -------------------- */
-
 export type UserDocumentInput = {
   email: string;
   firstName: string;

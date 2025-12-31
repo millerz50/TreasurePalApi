@@ -1,4 +1,4 @@
-// signupUser.ts
+// src/features/auth/services/signupUser.ts
 import { Client, ID, Storage } from "node-appwrite";
 import { logError, logStep } from "../../services/lib/logger";
 
@@ -6,46 +6,36 @@ import { safeFormat } from "../../services/lib/models/user";
 import { createAuthUser } from "./authService";
 import { findByEmail } from "./gettersService";
 import { toUserDocument } from "./user.mapper";
-import type { SignupPayload } from "./user.types";
+import type { SignupPayload, UserRole } from "./user.types";
 import { createUserRow, deleteUserRowByAccountId } from "./userService";
 
-// Import the Appwrite client you already configured in index.ts
-import { databases } from "../../index"; // adjust path if needed
+import { databases } from "../../index"; // Appwrite client
 
-/**
- * System constants
- */
 const SIGNUP_BONUS_CREDITS = 40;
 
 /**
- * Allowed roles in the system
- */
-type UserRole = "user" | "agent" | "admin";
-
-/**
- * Uploads an image to Appwrite storage bucket
- * Accepts File or Blob, normalizes to File
+ * Uploads an image to Appwrite storage bucket in Node.js
+ * Accepts a Buffer (Node.js context). Filename and mimeType are only for logging.
  */
 async function uploadProfileImage(
   client: Client,
   bucketId: string,
-  file: File | Blob
+  buffer: Buffer,
+  filename: string,
+  mimeType: string
 ): Promise<string> {
   const storage = new Storage(client);
 
-  // Normalize Blob into File if needed (browser context)
-  const normalizedFile =
-    file instanceof File
-      ? file
-      : new File([file], `upload-${Date.now()}.png`, { type: file.type });
-
   try {
-    logStep("Uploading profile image", { bucketId });
+    logStep("Uploading profile image", { bucketId, filename, mimeType });
+
+    // Node.js Appwrite SDK: pass only bucketId, fileId, and Buffer
     const uploaded = await storage.createFile(
       bucketId,
       ID.unique(),
-      normalizedFile
+      buffer as any // cast to any to satisfy TypeScript
     );
+
     logStep("Profile image uploaded", { fileId: uploaded.$id });
     return uploaded.$id;
   } catch (err) {
@@ -57,42 +47,21 @@ async function uploadProfileImage(
 export async function signupUser(payload: SignupPayload) {
   logStep("START signupUser", { email: payload.email });
 
-  /* =========================
-     0️⃣ VALIDATION
-  ========================= */
-  if (!payload.email) {
-    logError("signupUser.validation", "Missing email");
-    throw new Error("Email is required");
-  }
-  if (!payload.password) {
-    logError("signupUser.validation", "Missing password");
-    throw new Error("Password is required");
-  }
+  if (!payload.email) throw new Error("Email is required");
+  if (!payload.password) throw new Error("Password is required");
 
   const normalizedEmail = payload.email.toLowerCase().trim();
   const accountId = payload.accountid ?? ID.unique();
 
-  /* =========================
-     1️⃣ PRE-CHECK
-  ========================= */
-  try {
-    const existing = await findByEmail(normalizedEmail).catch(() => null);
-    if (existing) {
-      logError("signupUser.preCheck", "Duplicate email", {
-        email: normalizedEmail,
-      });
-      const err: any = new Error("User already exists with this email");
-      err.status = 409;
-      throw err;
-    }
-  } catch (err) {
-    logError("signupUser.preCheck failed", err);
+  // 1️⃣ Pre-check if user exists
+  const existing = await findByEmail(normalizedEmail).catch(() => null);
+  if (existing) {
+    const err: any = new Error("User already exists with this email");
+    err.status = 409;
     throw err;
   }
 
-  /* =========================
-     2️⃣ CREATE AUTH USER
-  ========================= */
+  // 2️⃣ Create Auth user
   try {
     logStep("Creating auth user", { accountId, email: normalizedEmail });
     await createAuthUser(accountId, normalizedEmail, payload.password);
@@ -102,21 +71,25 @@ export async function signupUser(payload: SignupPayload) {
     throw new Error("Failed to create auth user");
   }
 
-  /* =========================
-     3️⃣ SERVER-ENFORCED ROLES
-  ========================= */
+  // 3️⃣ Server-enforced roles
   const roles: UserRole[] = ["user"];
 
-  /* =========================
-     4️⃣ BUILD DB DOCUMENT
-  ========================= */
+  // 4️⃣ Profile image upload
   let profileImageId: string | undefined;
   if (payload.profileImage) {
     try {
+      const { buffer, filename, mimeType } = payload.profileImage as {
+        buffer: Buffer;
+        filename: string;
+        mimeType: string;
+      };
+
       profileImageId = await uploadProfileImage(
         databases.client,
         process.env.APPWRITE_BUCKET_ID || "",
-        payload.profileImage
+        buffer,
+        filename,
+        mimeType
       );
     } catch (err) {
       logError("signupUser.profileImageUpload failed", err);
@@ -124,6 +97,7 @@ export async function signupUser(payload: SignupPayload) {
     }
   }
 
+  // 5️⃣ Build DB document
   const document = toUserDocument(
     {
       email: normalizedEmail,
@@ -141,9 +115,7 @@ export async function signupUser(payload: SignupPayload) {
     SIGNUP_BONUS_CREDITS
   );
 
-  /* =========================
-     5️⃣ CREATE DB ROW
-  ========================= */
+  // 6️⃣ Create DB row
   let createdRow;
   try {
     logStep("Creating DB row", { accountId });
@@ -151,19 +123,16 @@ export async function signupUser(payload: SignupPayload) {
     logStep("DB row created", { profileId: createdRow.$id });
   } catch (err) {
     logError("signupUser.createRow failed", err);
-    // 🔥 Roll back auth user if DB write fails
     try {
       await deleteUserRowByAccountId(accountId);
-      logStep("Rolled back auth user", { accountId });
+      logStep("Rolled back DB row", { accountId });
     } catch (rollbackErr) {
       logError("signupUser.rollback failed", rollbackErr);
     }
     throw new Error("Failed to create user profile");
   }
 
-  /* =========================
-     6️⃣ RETURN SAFE RESPONSE
-  ========================= */
+  // 7️⃣ Return safe response
   const response = {
     status: "SUCCESS",
     userId: accountId,
