@@ -4,7 +4,7 @@ import { getClient, getEnv } from "../../services/lib/env";
 
 const DB_ID = getEnv("APPWRITE_DATABASE_ID")!;
 const USERS_COLLECTION = "users";
-const AGENT_APPLICATIONS_COLLECTION = "agent_applications"; // new collection for applications
+const AGENT_APPLICATIONS_COLLECTION = "agent_profiles"; // new collection for applications
 const NOTIFICATIONS_COLLECTION = "notifications"; // optional notifications collection
 
 type UserRole = "user" | "agent" | "admin";
