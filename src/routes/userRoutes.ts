@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import express from "express";
-import sdk, { Client } from "node-appwrite";
+import sdk, { Client, ID } from "node-appwrite";
 
 import {
   approveAgent,
@@ -28,7 +28,7 @@ import { authMiddleware } from "../middleware/authMiddleware";
 const router = express.Router();
 
 /* ======================================================
-   INIT APPWRITE CLIENT (OTP verification)
+   INIT APPWRITE CLIENT
 ====================================================== */
 const client = new Client()
   .setEndpoint(process.env.APPWRITE_ENDPOINT!)
@@ -36,6 +36,37 @@ const client = new Client()
   .setKey(process.env.APPWRITE_API_KEY!);
 
 const accounts = new sdk.Account(client);
+const storage = new sdk.Storage(client);
+
+/* ======================================================
+   FILE UPLOAD (Avatar / Profile Image)
+   POST /users/upload
+====================================================== */
+import { Readable } from "stream";
+
+router.post("/upload", upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "No file provided" });
+    }
+
+    const bucketId = process.env.APPWRITE_BUCKET_ID!;
+
+    // Convert Buffer to Readable stream
+    const stream = Readable.from(req.file.buffer);
+
+    const uploaded = await storage.createFile(bucketId, ID.unique(), stream);
+
+    return res.json({
+      status: "SUCCESS",
+      fileId: uploaded.$id,
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      error: err?.message || "File upload failed",
+    });
+  }
+});
 
 /* ======================================================
    OTP VERIFICATION
@@ -46,9 +77,7 @@ router.post("/verify-phone", async (req, res) => {
     const { userId, otp } = req.body;
 
     if (!userId || !otp) {
-      return res.status(400).json({
-        message: "Missing userId or otp",
-      });
+      return res.status(400).json({ message: "Missing userId or otp" });
     }
 
     await accounts.updatePhoneSession(userId, otp);
@@ -90,23 +119,8 @@ router.delete("/:id", authMiddleware, deleteUser);
 /* ======================================================
    ADMIN — ROLE & STATUS
 ====================================================== */
-
-/**
- * Replace ALL roles (admin-only)
- * Body: { roles: ["user","agent"] }
- */
 router.patch("/:id/roles", authMiddleware, setRoles);
-
-/**
- * Approve Agent (Option C)
- * Admin presses “Approve Agent”
- */
 router.post("/:id/approve-agent", authMiddleware, approveAgent);
-
-/**
- * Update user status
- * Body: { status: "Active" | "Pending" | "Suspended" }
- */
 router.patch("/:id/status", authMiddleware, setStatus);
 
 /* ======================================================

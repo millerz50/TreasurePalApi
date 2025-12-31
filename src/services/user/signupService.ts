@@ -30,25 +30,27 @@ async function uploadProfileImage(
   client: Client,
   bucketId: string,
   file: File | Blob
-) {
+): Promise<string> {
   const storage = new Storage(client);
 
-  // Normalize Blob into File if needed
+  // Normalize Blob into File if needed (browser context)
   const normalizedFile =
     file instanceof File
       ? file
       : new File([file], `upload-${Date.now()}.png`, { type: file.type });
 
   try {
+    logStep("Uploading profile image", { bucketId });
     const uploaded = await storage.createFile(
       bucketId,
       ID.unique(),
       normalizedFile
     );
-    return uploaded.$id; // return file ID
+    logStep("Profile image uploaded", { fileId: uploaded.$id });
+    return uploaded.$id;
   } catch (err) {
-    logError("signupUser.uploadProfileImage", err);
-    throw err;
+    logError("signupUser.uploadProfileImage failed", err);
+    throw new Error("Failed to upload profile image");
   }
 }
 
@@ -58,8 +60,14 @@ export async function signupUser(payload: SignupPayload) {
   /* =========================
      0️⃣ VALIDATION
   ========================= */
-  if (!payload.email) throw new Error("Email is required");
-  if (!payload.password) throw new Error("Password is required");
+  if (!payload.email) {
+    logError("signupUser.validation", "Missing email");
+    throw new Error("Email is required");
+  }
+  if (!payload.password) {
+    logError("signupUser.validation", "Missing password");
+    throw new Error("Password is required");
+  }
 
   const normalizedEmail = payload.email.toLowerCase().trim();
   const accountId = payload.accountid ?? ID.unique();
@@ -67,10 +75,18 @@ export async function signupUser(payload: SignupPayload) {
   /* =========================
      1️⃣ PRE-CHECK
   ========================= */
-  const existing = await findByEmail(normalizedEmail).catch(() => null);
-  if (existing) {
-    const err: any = new Error("User already exists with this email");
-    err.status = 409;
+  try {
+    const existing = await findByEmail(normalizedEmail).catch(() => null);
+    if (existing) {
+      logError("signupUser.preCheck", "Duplicate email", {
+        email: normalizedEmail,
+      });
+      const err: any = new Error("User already exists with this email");
+      err.status = 409;
+      throw err;
+    }
+  } catch (err) {
+    logError("signupUser.preCheck failed", err);
     throw err;
   }
 
@@ -78,10 +94,12 @@ export async function signupUser(payload: SignupPayload) {
      2️⃣ CREATE AUTH USER
   ========================= */
   try {
+    logStep("Creating auth user", { accountId, email: normalizedEmail });
     await createAuthUser(accountId, normalizedEmail, payload.password);
+    logStep("Auth user created", { accountId });
   } catch (err) {
-    logError("signupUser.authCreate", err);
-    throw err;
+    logError("signupUser.authCreate failed", err);
+    throw new Error("Failed to create auth user");
   }
 
   /* =========================
@@ -93,13 +111,17 @@ export async function signupUser(payload: SignupPayload) {
      4️⃣ BUILD DB DOCUMENT
   ========================= */
   let profileImageId: string | undefined;
-
   if (payload.profileImage) {
-    profileImageId = await uploadProfileImage(
-      databases.client, // reuse your Appwrite client
-      process.env.APPWRITE_BUCKET_ID || "", // bucket ID from env
-      payload.profileImage
-    );
+    try {
+      profileImageId = await uploadProfileImage(
+        databases.client,
+        process.env.APPWRITE_BUCKET_ID || "",
+        payload.profileImage
+      );
+    } catch (err) {
+      logError("signupUser.profileImageUpload failed", err);
+      // continue without profile image
+    }
   }
 
   const document = toUserDocument(
@@ -113,7 +135,7 @@ export async function signupUser(payload: SignupPayload) {
       dateOfBirth: payload.dateOfBirth,
       roles,
       status: "Pending",
-      profileImageId, // store file ID reference
+      profileImageId,
     },
     accountId,
     SIGNUP_BONUS_CREDITS
@@ -124,22 +146,31 @@ export async function signupUser(payload: SignupPayload) {
   ========================= */
   let createdRow;
   try {
+    logStep("Creating DB row", { accountId });
     createdRow = await createUserRow(document);
+    logStep("DB row created", { profileId: createdRow.$id });
   } catch (err) {
-    logError("signupUser.createRow", err);
+    logError("signupUser.createRow failed", err);
+    // 🔥 Roll back auth user if DB write fails
     try {
       await deleteUserRowByAccountId(accountId);
-    } catch {}
-    throw err;
+      logStep("Rolled back auth user", { accountId });
+    } catch (rollbackErr) {
+      logError("signupUser.rollback failed", rollbackErr);
+    }
+    throw new Error("Failed to create user profile");
   }
 
   /* =========================
      6️⃣ RETURN SAFE RESPONSE
   ========================= */
-  return {
+  const response = {
     status: "SUCCESS",
     userId: accountId,
     profileId: createdRow.$id,
     profile: safeFormat(createdRow),
   };
+
+  logStep("signupUser completed", response);
+  return response;
 }
