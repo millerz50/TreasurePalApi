@@ -55,39 +55,24 @@ export async function createUserRow(payload: Record<string, any>) {
  * Stores application in AGENT_APPLICATIONS_COLLECTION with admin-readable permissions.
  */
 export async function submitAgentApplication(payload: {
-  accountid: string;
-  userId?: string; // optional duplicate
-  fullName?: string;
-  email?: string;
-  phone?: string;
-  city?: string;
+  userId: string; // required by Appwrite
   licenseNumber?: string | null;
   agencyId?: string | null;
-  message?: string | null;
+  rating?: number | null;
+  verified?: boolean | null;
 }) {
-  if (!payload || !payload.accountid) {
-    throw new Error("accountid is required to submit an application");
+  if (!payload || !payload.userId) {
+    throw new Error("userId is required to submit an application");
   }
 
-  const now = new Date().toISOString();
   const doc = {
-    accountid: payload.accountid,
-    userId: payload.userId ?? null,
-    fullName: payload.fullName ?? null,
-    email: payload.email ?? null,
-    phone: payload.phone ?? null,
-    city: payload.city ?? null,
+    userId: payload.userId,
     licenseNumber: payload.licenseNumber ?? null,
     agencyId: payload.agencyId ?? null,
-    message: payload.message ?? null,
-    status: "pending",
-    submittedAt: now,
-    reviewedAt: null,
-    reviewedBy: null,
-    reviewNotes: null,
+    rating: payload.rating ?? null,
+    verified: payload.verified ?? null,
   };
 
-  // Create application document; only admin team can read/update/delete it
   return db().createDocument(
     DB_ID,
     AGENT_APPLICATIONS_COLLECTION,
