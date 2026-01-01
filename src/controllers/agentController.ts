@@ -1,5 +1,8 @@
-// server/controllers/agentController.ts
 import { NextFunction, Request, Response } from "express";
+import {
+  getAgentDashboardMetrics,
+  recordAgentMetrics,
+} from "../services/dashboard/dashboardService";
 import {
   approveApplication,
   getApplicationById,
@@ -22,7 +25,6 @@ function isAdmin(req: AuthenticatedRequest) {
 
 /* ============================
    SUBMIT APPLICATION
-   POST /agents/apply
 ============================ */
 export async function submitApplicationHandler(
   req: Request,
@@ -32,15 +34,13 @@ export async function submitApplicationHandler(
   try {
     const body = req.body ?? {};
 
-    // Basic validation
     if (!body.accountid || typeof body.accountid !== "string") {
       return res
         .status(400)
         .json({ success: false, message: "accountid is required" });
     }
 
-    // Submit application using the service
-    const created = await submitAgentApplication({
+    const payload = {
       accountid: body.accountid,
       userId: body.userId ?? body.accountid,
       fullName: body.fullName ?? null,
@@ -52,7 +52,9 @@ export async function submitApplicationHandler(
       rating: body.rating ?? null,
       verified: body.verified ?? null,
       message: body.message ?? null,
-    });
+    };
+
+    const created = await submitAgentApplication(payload);
 
     return res.status(201).json({ success: true, data: created });
   } catch (err: any) {
@@ -62,8 +64,6 @@ export async function submitApplicationHandler(
 
 /* ============================
    LIST PENDING APPLICATIONS
-   GET /agents/applications/pending
-   Admin only
 ============================ */
 export async function listPendingHandler(
   req: AuthenticatedRequest,
@@ -88,8 +88,6 @@ export async function listPendingHandler(
 
 /* ============================
    APPROVE APPLICATION
-   POST /agents/applications/:id/approve
-   Admin only
 ============================ */
 export async function approveApplicationHandler(
   req: AuthenticatedRequest,
@@ -140,8 +138,6 @@ export async function approveApplicationHandler(
 
 /* ============================
    REJECT APPLICATION
-   POST /agents/applications/:id/reject
-   Admin only
 ============================ */
 export async function rejectApplicationHandler(
   req: AuthenticatedRequest,
@@ -188,13 +184,7 @@ export async function rejectApplicationHandler(
 
 /* ============================
    GET METRICS
-   GET /agents/metrics
 ============================ */
-import {
-  getAgentDashboardMetrics,
-  recordAgentMetrics,
-} from "../services/dashboard/dashboardService";
-
 export async function getMetricsHandler(
   req: AuthenticatedRequest,
   res: Response,
@@ -215,12 +205,12 @@ export async function getMetricsHandler(
     const userDoc = await getUserByAccountId(
       agentPayload.accountid ?? agentId
     ).catch(() => null);
+
     if (!userDoc) {
       console.warn("Agent metrics requested for non-existing user:", agentId);
     }
 
     const metrics = await getAgentDashboardMetrics(agentId);
-
     await recordAgentMetrics(agentId, metrics);
 
     return res.status(200).json({ success: true, agentId, metrics });
