@@ -10,26 +10,9 @@ import {
 } from "../services/user/userService";
 import { AuthenticatedRequest } from "../types/AuthenticatedRequest";
 
-/**
- * Controller for agent application workflow and metrics wiring.
- *
- * Exports:
- * - submitApplicationHandler  POST /agents/apply
- * - listPendingHandler        GET  /agents/applications/pending   (admin)
- * - approveApplicationHandler POST /agents/applications/:id/approve (admin)
- * - rejectApplicationHandler  POST /agents/applications/:id/reject  (admin)
- * - getMetricsHandler         GET  /agents/metrics                 (agent)
- *
- * Notes:
- * - This file assumes authentication middleware populates req.user (for admins) or req.agent (for agents)
- *   with at least an `accountid` or `$id` and `roles` array when applicable.
- * - Admin-only endpoints perform a simple role check; you may prefer middleware-based authorization.
- */
-
 /* -------------------------
    Helpers
-   ------------------------- */
-
+------------------------- */
 function isAdmin(req: AuthenticatedRequest) {
   const user = (req as any).user;
   if (!user) return false;
@@ -40,9 +23,7 @@ function isAdmin(req: AuthenticatedRequest) {
 /* ============================
    SUBMIT APPLICATION
    POST /agents/apply
-   Body: { accountid, userId?, fullName?, email?, phone?, city?, licenseNumber?, agencyId?, message? }
 ============================ */
-
 export async function submitApplicationHandler(
   req: Request,
   res: Response,
@@ -58,18 +39,19 @@ export async function submitApplicationHandler(
         .json({ success: false, message: "accountid is required" });
     }
 
-    // Optional: ensure user row exists; if not, create or return helpful error.
-    // Here we simply submit the application document.
+    // Submit application using the service
     const created = await submitAgentApplication({
       accountid: body.accountid,
-      userId: body.userId,
-      fullName: body.fullName,
-      email: body.email,
-      phone: body.phone,
-      city: body.city,
-      licenseNumber: body.licenseNumber,
-      agencyId: body.agencyId,
-      message: body.message,
+      userId: body.userId ?? body.accountid,
+      fullName: body.fullName ?? null,
+      email: body.email ?? null,
+      phone: body.phone ?? null,
+      city: body.city ?? null,
+      licenseNumber: body.licenseNumber ?? null,
+      agencyId: body.agencyId ?? null,
+      rating: body.rating ?? null,
+      verified: body.verified ?? null,
+      message: body.message ?? null,
     });
 
     return res.status(201).json({ success: true, data: created });
@@ -83,7 +65,6 @@ export async function submitApplicationHandler(
    GET /agents/applications/pending
    Admin only
 ============================ */
-
 export async function listPendingHandler(
   req: AuthenticatedRequest,
   res: Response,
@@ -108,10 +89,8 @@ export async function listPendingHandler(
 /* ============================
    APPROVE APPLICATION
    POST /agents/applications/:id/approve
-   Body: { reviewNotes? }
    Admin only
 ============================ */
-
 export async function approveApplicationHandler(
   req: AuthenticatedRequest,
   res: Response,
@@ -138,7 +117,6 @@ export async function approveApplicationHandler(
         .json({ success: false, message: "Application not found" });
     }
 
-    // Determine admin identifier for audit (prefer accountid or $id)
     const adminPayload = (req as any).user;
     const adminId =
       adminPayload?.accountid ??
@@ -163,10 +141,8 @@ export async function approveApplicationHandler(
 /* ============================
    REJECT APPLICATION
    POST /agents/applications/:id/reject
-   Body: { reviewNotes? }
    Admin only
 ============================ */
-
 export async function rejectApplicationHandler(
   req: AuthenticatedRequest,
   res: Response,
@@ -211,11 +187,9 @@ export async function rejectApplicationHandler(
 }
 
 /* ============================
-   GET METRICS (existing)
+   GET METRICS
    GET /agents/metrics
-   Expects verifyToken middleware to populate req.agent or req.user
 ============================ */
-
 import {
   getAgentDashboardMetrics,
   recordAgentMetrics,
@@ -238,19 +212,15 @@ export async function getMetricsHandler(
     const agentId =
       agentPayload.id ?? agentPayload.$id ?? agentPayload.accountid;
 
-    // Optional: quick existence check (non-blocking)
     const userDoc = await getUserByAccountId(
       agentPayload.accountid ?? agentId
     ).catch(() => null);
     if (!userDoc) {
-      // Not fatal — you may still want to return 404 or continue depending on your policy
-      // Here we continue but include a warning
       console.warn("Agent metrics requested for non-existing user:", agentId);
     }
 
     const metrics = await getAgentDashboardMetrics(agentId);
 
-    // Persist audit record (await to surface errors)
     await recordAgentMetrics(agentId, metrics);
 
     return res.status(200).json({ success: true, agentId, metrics });
