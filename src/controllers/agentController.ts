@@ -38,17 +38,16 @@ export async function submitApplicationHandler(
     console.log("submitApplicationHandler: Received body:", body);
 
     // Validate required field
-    if (!body.accountid || typeof body.accountid !== "string") {
-      console.error("submitApplicationHandler: Missing accountid");
+    if (!body.userId || typeof body.userId !== "string") {
+      console.error("submitApplicationHandler: Missing userId");
       return res
         .status(400)
-        .json({ success: false, message: "accountid is required" });
+        .json({ success: false, message: "userId is required" });
     }
 
-    // Build payload
+    // Build payload for DB (remove accountid)
     const payload = {
-      accountid: body.accountid,
-      userId: body.userId ?? body.accountid,
+      userId: body.userId,
       fullName: body.fullName ?? null,
       email: body.email ?? null,
       phone: body.phone ?? null,

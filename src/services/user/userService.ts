@@ -33,9 +33,7 @@ export async function createUserRow(payload: Record<string, any>) {
 /* ============================
    AGENT APPLICATIONS
 ============================ */
-
 export async function submitAgentApplication(payload: {
-  accountid: string;
   userId: string;
   licenseNumber?: string | null;
   agencyId?: string | null;
@@ -47,7 +45,7 @@ export async function submitAgentApplication(payload: {
   city?: string | null;
   message?: string | null;
 }) {
-  // Step 1: Validate required fields and log errors
+  // Step 1: Validate required fields
   if (!payload || typeof payload !== "object") {
     console.error("submitAgentApplication: Invalid payload", payload);
     throw new Error("Payload is required and must be an object");
@@ -61,23 +59,14 @@ export async function submitAgentApplication(payload: {
     throw new Error("userId is required and must be a string");
   }
 
-  if (!payload.accountid || typeof payload.accountid !== "string") {
-    console.error(
-      "submitAgentApplication: Missing or invalid accountid",
-      payload.accountid
-    );
-    throw new Error("accountid is required and must be a string");
-  }
-
-  // Step 2: Log full incoming payload for debugging
+  // Step 2: Log full incoming payload
   console.log(
     "submitAgentApplication: Received payload:",
     JSON.stringify(payload, null, 2)
   );
 
-  // Step 3: Build the document
+  // Step 3: Build document (WITHOUT accountid)
   const doc = {
-    accountid: payload.accountid,
     userId: payload.userId,
     fullName: payload.fullName ?? null,
     email: payload.email ?? null,
