@@ -26,6 +26,7 @@ function isAdmin(req: AuthenticatedRequest) {
 /* ============================
    SUBMIT APPLICATION
 ============================ */
+
 export async function submitApplicationHandler(
   req: Request,
   res: Response,
@@ -45,15 +46,13 @@ export async function submitApplicationHandler(
         .json({ success: false, message: "userId is required" });
     }
 
-    // Build payload for Appwrite DB: only fields allowed in your collection
+    // ✅ Build payload: ONLY fields that exist in Appwrite
     const payload = {
       userId: body.userId,
       licenseNumber: body.licenseNumber ?? null,
       agencyId: body.agencyId ?? null,
       rating: body.rating ?? null,
       verified: body.verified ?? null,
-      status: "pending",
-      submittedAt: new Date().toISOString(),
     };
 
     console.log("submitApplicationHandler: Payload to DB:", payload);

@@ -39,57 +39,42 @@ export async function submitAgentApplication(payload: {
   agencyId?: string | null;
   rating?: number | null;
   verified?: boolean | null;
-  fullName?: string | null;
-  email?: string | null;
-  phone?: string | null;
-  city?: string | null;
-  message?: string | null;
 }) {
-  // Step 1: Validate required fields
+  // ----------------------------
+  // Validate payload
+  // ----------------------------
   if (!payload || typeof payload !== "object") {
-    console.error("submitAgentApplication: Invalid payload", payload);
-    throw new Error("Payload is required and must be an object");
+    throw new Error("Payload must be an object");
   }
 
   if (!payload.userId || typeof payload.userId !== "string") {
-    console.error(
-      "submitAgentApplication: Missing or invalid userId",
-      payload.userId
-    );
     throw new Error("userId is required and must be a string");
   }
 
-  // Step 2: Log full incoming payload
   console.log(
-    "submitAgentApplication: Received payload:",
+    "submitAgentApplication: Incoming payload:",
     JSON.stringify(payload, null, 2)
   );
 
-  // Step 3: Build document (WITHOUT accountid)
+  // ----------------------------
+  // Build Appwrite-safe document
+  // ----------------------------
   const doc = {
     userId: payload.userId,
-    email: payload.email ?? null,
-    phone: payload.phone ?? null,
-    city: payload.city ?? null,
     licenseNumber: payload.licenseNumber ?? null,
     agencyId: payload.agencyId ?? null,
     rating: payload.rating ?? null,
     verified: payload.verified ?? null,
-    message: payload.message ?? null,
-    status: "pending",
-    submittedAt: new Date().toISOString(),
-    reviewedAt: null,
-    reviewedBy: null,
-    reviewNotes: null,
   };
 
-  // Step 4: Log final document before DB
   console.log(
-    "submitAgentApplication: Document to be created in DB:",
+    "submitAgentApplication: Appwrite document:",
     JSON.stringify(doc, null, 2)
   );
 
-  // Step 5: Insert into DB
+  // ----------------------------
+  // Insert document
+  // ----------------------------
   try {
     const result = await db().createDocument(
       DB_ID,
@@ -103,16 +88,10 @@ export async function submitAgentApplication(payload: {
       ]
     );
 
-    console.log(
-      "submitAgentApplication: Document created successfully:",
-      result
-    );
+    console.log("submitAgentApplication: Created:", result);
     return result;
   } catch (err) {
-    console.error(
-      "submitAgentApplication: Error creating document in DB:",
-      err
-    );
+    console.error("submitAgentApplication: Appwrite error:", err);
     throw err;
   }
 }
