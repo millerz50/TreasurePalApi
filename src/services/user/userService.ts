@@ -68,7 +68,6 @@ export async function submitAgentApplication(payload: {
   // Step 3: Build document (WITHOUT accountid)
   const doc = {
     userId: payload.userId,
-    fullName: payload.fullName ?? null,
     email: payload.email ?? null,
     phone: payload.phone ?? null,
     city: payload.city ?? null,

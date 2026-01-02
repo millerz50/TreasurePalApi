@@ -45,27 +45,22 @@ export async function submitApplicationHandler(
         .json({ success: false, message: "userId is required" });
     }
 
-    // Build payload for DB (remove accountid)
+    // Build payload for Appwrite DB: only fields allowed in your collection
     const payload = {
       userId: body.userId,
-      fullName: body.fullName ?? null,
-      email: body.email ?? null,
-      phone: body.phone ?? null,
-      city: body.city ?? null,
       licenseNumber: body.licenseNumber ?? null,
       agencyId: body.agencyId ?? null,
       rating: body.rating ?? null,
       verified: body.verified ?? null,
-      message: body.message ?? null,
+      status: "pending",
+      submittedAt: new Date().toISOString(),
     };
 
-    // Debug: log final payload
     console.log("submitApplicationHandler: Payload to DB:", payload);
 
-    // Call DB insert
+    // Insert document in DB
     const created = await submitAgentApplication(payload);
 
-    // Debug: log created document
     console.log("submitApplicationHandler: Created document:", created);
 
     return res.status(201).json({ success: true, data: created });
@@ -74,6 +69,7 @@ export async function submitApplicationHandler(
     return next(err);
   }
 }
+
 /* ============================
    LIST PENDING APPLICATIONS
 ============================ */
@@ -94,6 +90,7 @@ export async function listPendingHandler(
 
     return res.status(200).json({ success: true, data: applications });
   } catch (err: any) {
+    console.error("listPendingHandler: Error:", err);
     return next(err);
   }
 }
@@ -117,7 +114,7 @@ export async function approveApplicationHandler(
     if (!applicationId) {
       return res
         .status(400)
-        .json({ success: false, message: "application id is required" });
+        .json({ success: false, message: "Application id is required" });
     }
 
     const application = await getApplicationById(applicationId);
@@ -144,6 +141,7 @@ export async function approveApplicationHandler(
 
     return res.status(200).json({ success: true, data: result });
   } catch (err: any) {
+    console.error("approveApplicationHandler: Error:", err);
     return next(err);
   }
 }
@@ -167,7 +165,7 @@ export async function rejectApplicationHandler(
     if (!applicationId) {
       return res
         .status(400)
-        .json({ success: false, message: "application id is required" });
+        .json({ success: false, message: "Application id is required" });
     }
 
     const application = await getApplicationById(applicationId);
@@ -190,12 +188,13 @@ export async function rejectApplicationHandler(
 
     return res.status(200).json({ success: true, data: result });
   } catch (err: any) {
+    console.error("rejectApplicationHandler: Error:", err);
     return next(err);
   }
 }
 
 /* ============================
-   GET METRICS
+   GET AGENT METRICS
 ============================ */
 export async function getMetricsHandler(
   req: AuthenticatedRequest,
@@ -227,6 +226,7 @@ export async function getMetricsHandler(
 
     return res.status(200).json({ success: true, agentId, metrics });
   } catch (err: any) {
+    console.error("getMetricsHandler: Error:", err);
     return next(err);
   }
 }
