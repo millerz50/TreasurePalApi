@@ -34,12 +34,18 @@ export async function submitApplicationHandler(
   try {
     const body = req.body ?? {};
 
+    // Debug: log incoming body
+    console.log("submitApplicationHandler: Received body:", body);
+
+    // Validate required field
     if (!body.accountid || typeof body.accountid !== "string") {
+      console.error("submitApplicationHandler: Missing accountid");
       return res
         .status(400)
         .json({ success: false, message: "accountid is required" });
     }
 
+    // Build payload
     const payload = {
       accountid: body.accountid,
       userId: body.userId ?? body.accountid,
@@ -54,14 +60,21 @@ export async function submitApplicationHandler(
       message: body.message ?? null,
     };
 
+    // Debug: log final payload
+    console.log("submitApplicationHandler: Payload to DB:", payload);
+
+    // Call DB insert
     const created = await submitAgentApplication(payload);
+
+    // Debug: log created document
+    console.log("submitApplicationHandler: Created document:", created);
 
     return res.status(201).json({ success: true, data: created });
   } catch (err: any) {
+    console.error("submitApplicationHandler: Error:", err);
     return next(err);
   }
 }
-
 /* ============================
    LIST PENDING APPLICATIONS
 ============================ */

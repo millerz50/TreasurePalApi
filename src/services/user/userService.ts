@@ -47,9 +47,35 @@ export async function submitAgentApplication(payload: {
   city?: string | null;
   message?: string | null;
 }) {
-  if (!payload || !payload.userId) throw new Error("userId is required");
-  if (!payload.accountid) throw new Error("accountid is required");
+  // Step 1: Validate required fields and log errors
+  if (!payload || typeof payload !== "object") {
+    console.error("submitAgentApplication: Invalid payload", payload);
+    throw new Error("Payload is required and must be an object");
+  }
 
+  if (!payload.userId || typeof payload.userId !== "string") {
+    console.error(
+      "submitAgentApplication: Missing or invalid userId",
+      payload.userId
+    );
+    throw new Error("userId is required and must be a string");
+  }
+
+  if (!payload.accountid || typeof payload.accountid !== "string") {
+    console.error(
+      "submitAgentApplication: Missing or invalid accountid",
+      payload.accountid
+    );
+    throw new Error("accountid is required and must be a string");
+  }
+
+  // Step 2: Log full incoming payload for debugging
+  console.log(
+    "submitAgentApplication: Received payload:",
+    JSON.stringify(payload, null, 2)
+  );
+
+  // Step 3: Build the document
   const doc = {
     accountid: payload.accountid,
     userId: payload.userId,
@@ -69,17 +95,38 @@ export async function submitAgentApplication(payload: {
     reviewNotes: null,
   };
 
-  return db().createDocument(
-    DB_ID,
-    AGENT_APPLICATIONS_COLLECTION,
-    ID.unique(),
-    doc,
-    [
-      Permission.read(Role.team("admin")),
-      Permission.update(Role.team("admin")),
-      Permission.delete(Role.team("admin")),
-    ]
+  // Step 4: Log final document before DB
+  console.log(
+    "submitAgentApplication: Document to be created in DB:",
+    JSON.stringify(doc, null, 2)
   );
+
+  // Step 5: Insert into DB
+  try {
+    const result = await db().createDocument(
+      DB_ID,
+      AGENT_APPLICATIONS_COLLECTION,
+      ID.unique(),
+      doc,
+      [
+        Permission.read(Role.team("admin")),
+        Permission.update(Role.team("admin")),
+        Permission.delete(Role.team("admin")),
+      ]
+    );
+
+    console.log(
+      "submitAgentApplication: Document created successfully:",
+      result
+    );
+    return result;
+  } catch (err) {
+    console.error(
+      "submitAgentApplication: Error creating document in DB:",
+      err
+    );
+    throw err;
+  }
 }
 
 export async function listPendingApplications(limit = 50) {
