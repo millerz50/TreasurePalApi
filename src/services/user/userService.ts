@@ -37,7 +37,6 @@ export async function submitAgentApplication(payload: {
   userId: string;
   fullname: string;
   message: string;
-  licenseNumber?: string | null;
   agencyId?: string | null;
   rating?: number | null;
   verified?: boolean | null;
@@ -69,15 +68,19 @@ export async function submitAgentApplication(payload: {
   // ----------------------------
   // Build Appwrite-safe document
   // ----------------------------
-  const doc = {
+  // Match your schema exactly: only userId, fullname, message required
+  // agencyId, rating, verified are optional
+  const doc: Record<string, any> = {
     userId: payload.userId,
     fullname: payload.fullname,
     message: payload.message,
-    licenseNumber: payload.licenseNumber ?? null,
-    agencyId: payload.agencyId ?? null,
-    rating: payload.rating ?? null,
-    verified: payload.verified ?? null,
   };
+
+  if (payload.agencyId) doc.agencyId = payload.agencyId;
+  if (payload.rating !== undefined && payload.rating !== null)
+    doc.rating = payload.rating;
+  if (payload.verified !== undefined && payload.verified !== null)
+    doc.verified = payload.verified;
 
   console.log(
     "submitAgentApplication: Appwrite document:",
@@ -85,7 +88,7 @@ export async function submitAgentApplication(payload: {
   );
 
   // ----------------------------
-  // Insert document
+  // Insert document into Appwrite
   // ----------------------------
   try {
     const result = await db().createDocument(
@@ -107,6 +110,9 @@ export async function submitAgentApplication(payload: {
     throw err;
   }
 }
+// ----------------------------
+// List pending agent applications
+// ----------------------------
 export async function listPendingApplications(limit = 50) {
   const res = await db().listDocuments(DB_ID, AGENT_APPLICATIONS_COLLECTION, [
     Query.equal("status", "pending"),
@@ -114,7 +120,6 @@ export async function listPendingApplications(limit = 50) {
   ]);
   return res.documents;
 }
-
 /* ============================
    READ
 ============================ */

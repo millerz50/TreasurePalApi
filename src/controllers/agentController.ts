@@ -58,22 +58,29 @@ export async function submitApplicationHandler(
     }
 
     // -----------------------------
-    // Build Appwrite payload
+    // Build payload for Appwrite
     // -----------------------------
-    const payload = {
+    const payload: {
+      userId: string;
+      fullname: string;
+      message: string;
+      agencyId?: string;
+      rating?: number;
+      verified?: boolean;
+    } = {
       userId: body.userId,
       fullname: body.fullname,
       message: body.message,
-      licenseNumber: body.licenseNumber ?? null,
-      agencyId: body.agencyId ?? null,
-      rating: typeof body.rating === "number" ? body.rating : null,
-      verified: typeof body.verified === "boolean" ? body.verified : false,
     };
+
+    if (body.agencyId) payload.agencyId = body.agencyId;
+    if (typeof body.rating === "number") payload.rating = body.rating;
+    if (typeof body.verified === "boolean") payload.verified = body.verified;
 
     console.log("submitApplicationHandler: Payload to DB:", payload);
 
     // -----------------------------
-    // Insert document
+    // Insert document into Appwrite
     // -----------------------------
     const created = await submitAgentApplication(payload);
 
