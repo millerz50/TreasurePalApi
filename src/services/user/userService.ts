@@ -33,30 +33,47 @@ export async function createUserRow(payload: Record<string, any>) {
 /* ============================
    AGENT APPLICATIONS
 ============================ */
+
 export async function submitAgentApplication(payload: {
-  userId: string;
+  userId: string; // This can now also be mapped from accountid
   fullname: string;
   message: string;
   agentId?: string | null;
   rating?: number | null;
   verified?: boolean | null;
 }) {
+  console.log("submitAgentApplication: Starting...");
+
   // ----------------------------
   // Validate payload
   // ----------------------------
+  console.log("submitAgentApplication: Validating payload...");
   if (!payload || typeof payload !== "object") {
+    console.error("submitAgentApplication: Invalid payload:", payload);
     throw new Error("Payload must be an object");
   }
 
   if (!payload.userId || typeof payload.userId !== "string") {
+    console.error(
+      "submitAgentApplication: Missing or invalid userId:",
+      payload.userId
+    );
     throw new Error("userId is required and must be a string");
   }
 
   if (!payload.fullname || typeof payload.fullname !== "string") {
+    console.error(
+      "submitAgentApplication: Missing or invalid fullname:",
+      payload.fullname
+    );
     throw new Error("fullname is required and must be a string");
   }
 
   if (!payload.message || typeof payload.message !== "string") {
+    console.error(
+      "submitAgentApplication: Missing or invalid message:",
+      payload.message
+    );
     throw new Error("message is required and must be a string");
   }
 
@@ -68,22 +85,31 @@ export async function submitAgentApplication(payload: {
   // ----------------------------
   // Build Appwrite-safe document
   // ----------------------------
-  // Match your schema exactly: only userId, fullname, message required
-  // agencyId, rating, verified are optional
+  console.log("submitAgentApplication: Building Appwrite document...");
   const doc: Record<string, any> = {
     userId: payload.userId,
     fullname: payload.fullname,
     message: payload.message,
   };
 
-  if (payload.agentId) doc.agentId = payload.agentId;
-  if (payload.rating !== undefined && payload.rating !== null)
+  // Optional fields — include falsy values if they are valid
+  if (payload.agentId !== undefined && payload.agentId !== null) {
+    doc.agentId = payload.agentId;
+    console.log("submitAgentApplication: Adding agentId:", payload.agentId);
+  }
+
+  if (payload.rating !== undefined && payload.rating !== null) {
     doc.rating = payload.rating;
-  if (payload.verified !== undefined && payload.verified !== null)
+    console.log("submitAgentApplication: Adding rating:", payload.rating);
+  }
+
+  if (payload.verified !== undefined && payload.verified !== null) {
     doc.verified = payload.verified;
+    console.log("submitAgentApplication: Adding verified:", payload.verified);
+  }
 
   console.log(
-    "submitAgentApplication: Appwrite document:",
+    "submitAgentApplication: Appwrite document ready:",
     JSON.stringify(doc, null, 2)
   );
 
@@ -91,6 +117,7 @@ export async function submitAgentApplication(payload: {
   // Insert document into Appwrite
   // ----------------------------
   try {
+    console.log("submitAgentApplication: Inserting document into Appwrite...");
     const result = await db().createDocument(
       DB_ID,
       AGENT_APPLICATIONS_COLLECTION,
@@ -103,11 +130,14 @@ export async function submitAgentApplication(payload: {
       ]
     );
 
-    console.log("submitAgentApplication: Created:", result);
+    console.log(
+      "submitAgentApplication: Document created successfully:",
+      result
+    );
     return result;
-  } catch (err) {
+  } catch (err: any) {
     console.error("submitAgentApplication: Appwrite error:", err);
-    throw err;
+    throw new Error(`Appwrite document creation failed: ${err.message ?? err}`);
   }
 }
 // ----------------------------

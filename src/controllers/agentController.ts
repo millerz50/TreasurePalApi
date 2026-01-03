@@ -33,25 +33,39 @@ export async function submitApplicationHandler(
 ) {
   try {
     const body = req.body ?? {};
-
-    console.log("submitApplicationHandler: Received body:", body);
+    console.log(
+      "submitApplicationHandler: Received body:",
+      JSON.stringify(body, null, 2)
+    );
 
     // -----------------------------
     // Validate required fields
     // -----------------------------
-    if (!body.userId || typeof body.userId !== "string") {
+    if (!body.accountid || typeof body.accountid !== "string") {
+      console.error(
+        "submitApplicationHandler: Missing or invalid accountid:",
+        body.accountid
+      );
       return res
         .status(400)
-        .json({ success: false, message: "userId is required" });
+        .json({ success: false, message: "accountid is required" });
     }
 
     if (!body.fullname || typeof body.fullname !== "string") {
+      console.error(
+        "submitApplicationHandler: Missing or invalid fullname:",
+        body.fullname
+      );
       return res
         .status(400)
         .json({ success: false, message: "fullname is required" });
     }
 
     if (!body.message || typeof body.message !== "string") {
+      console.error(
+        "submitApplicationHandler: Missing or invalid message:",
+        body.message
+      );
       return res
         .status(400)
         .json({ success: false, message: "message is required" });
@@ -61,30 +75,43 @@ export async function submitApplicationHandler(
     // Build payload for Appwrite
     // -----------------------------
     const payload: {
-      userId: string;
+      userId: string; // map accountid -> userId for your submitAgentApplication
       fullname: string;
       message: string;
-      agentId?: string;
-      rating?: number;
-      verified?: boolean;
+      agentId?: string | null;
+      rating?: number | null;
+      verified?: boolean | null;
     } = {
-      userId: body.userId,
+      userId: body.accountid, // IMPORTANT: use accountid here
       fullname: body.fullname,
       message: body.message,
     };
 
-    if (body.agentId) payload.agentId = body.agentId;
-    if (typeof body.rating === "number") payload.rating = body.rating;
-    if (typeof body.verified === "boolean") payload.verified = body.verified;
+    if (body.agentId !== undefined && body.agentId !== null) {
+      payload.agentId = body.agentId;
+      console.log("submitApplicationHandler: Adding agentId:", body.agentId);
+    }
 
-    console.log("submitApplicationHandler: Payload to DB:", payload);
+    if (typeof body.rating === "number") {
+      payload.rating = body.rating;
+      console.log("submitApplicationHandler: Adding rating:", body.rating);
+    }
+
+    if (typeof body.verified === "boolean") {
+      payload.verified = body.verified;
+      console.log("submitApplicationHandler: Adding verified:", body.verified);
+    }
+
+    console.log(
+      "submitApplicationHandler: Final payload:",
+      JSON.stringify(payload, null, 2)
+    );
 
     // -----------------------------
     // Insert document into Appwrite
     // -----------------------------
     const created = await submitAgentApplication(payload);
-
-    console.log("submitApplicationHandler: Created document:", created);
+    console.log("submitApplicationHandler: Document created:", created);
 
     return res.status(201).json({ success: true, data: created });
   } catch (err: any) {
