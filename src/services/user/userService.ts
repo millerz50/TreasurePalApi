@@ -76,7 +76,7 @@ export async function submitAgentApplication(payload: {
     message: payload.message,
   };
 
-  if (payload.agentId) doc.agencyId = payload.agentId;
+  if (payload.agentId) doc.agentId = payload.agentId;
   if (payload.rating !== undefined && payload.rating !== null)
     doc.rating = payload.rating;
   if (payload.verified !== undefined && payload.verified !== null)
