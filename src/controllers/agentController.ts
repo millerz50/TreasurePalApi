@@ -34,30 +34,32 @@ export async function submitApplicationHandler(
   try {
     const body = req.body ?? {};
 
-    // Debug: log incoming body
     console.log("submitApplicationHandler: Received body:", body);
 
+    // -----------------------------
     // Validate required fields
+    // -----------------------------
     if (!body.userId || typeof body.userId !== "string") {
-      console.error("submitApplicationHandler: Missing userId");
       return res
         .status(400)
         .json({ success: false, message: "userId is required" });
     }
+
     if (!body.fullname || typeof body.fullname !== "string") {
-      console.error("submitApplicationHandler: Missing fullname");
       return res
         .status(400)
         .json({ success: false, message: "fullname is required" });
     }
+
     if (!body.message || typeof body.message !== "string") {
-      console.error("submitApplicationHandler: Missing message");
       return res
         .status(400)
         .json({ success: false, message: "message is required" });
     }
 
-    // ✅ Build payload: include all required fields + optional ones
+    // -----------------------------
+    // Build Appwrite payload
+    // -----------------------------
     const payload = {
       userId: body.userId,
       fullname: body.fullname,
@@ -65,12 +67,14 @@ export async function submitApplicationHandler(
       licenseNumber: body.licenseNumber ?? null,
       agencyId: body.agencyId ?? null,
       rating: typeof body.rating === "number" ? body.rating : null,
-      verified: body.verified ?? false, // default false
+      verified: typeof body.verified === "boolean" ? body.verified : false,
     };
 
     console.log("submitApplicationHandler: Payload to DB:", payload);
 
-    // Insert document in DB
+    // -----------------------------
+    // Insert document
+    // -----------------------------
     const created = await submitAgentApplication(payload);
 
     console.log("submitApplicationHandler: Created document:", created);
@@ -81,7 +85,6 @@ export async function submitApplicationHandler(
     return next(err);
   }
 }
-
 /* ============================
    LIST PENDING APPLICATIONS
 ============================ */

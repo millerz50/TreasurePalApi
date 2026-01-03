@@ -107,7 +107,6 @@ export async function submitAgentApplication(payload: {
     throw err;
   }
 }
-
 export async function listPendingApplications(limit = 50) {
   const res = await db().listDocuments(DB_ID, AGENT_APPLICATIONS_COLLECTION, [
     Query.equal("status", "pending"),
