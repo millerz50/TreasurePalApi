@@ -35,6 +35,8 @@ export async function createUserRow(payload: Record<string, any>) {
 ============================ */
 export async function submitAgentApplication(payload: {
   userId: string;
+  fullname: string;
+  message: string;
   licenseNumber?: string | null;
   agencyId?: string | null;
   rating?: number | null;
@@ -51,6 +53,14 @@ export async function submitAgentApplication(payload: {
     throw new Error("userId is required and must be a string");
   }
 
+  if (!payload.fullname || typeof payload.fullname !== "string") {
+    throw new Error("fullname is required and must be a string");
+  }
+
+  if (!payload.message || typeof payload.message !== "string") {
+    throw new Error("message is required and must be a string");
+  }
+
   console.log(
     "submitAgentApplication: Incoming payload:",
     JSON.stringify(payload, null, 2)
@@ -61,6 +71,8 @@ export async function submitAgentApplication(payload: {
   // ----------------------------
   const doc = {
     userId: payload.userId,
+    fullname: payload.fullname,
+    message: payload.message,
     licenseNumber: payload.licenseNumber ?? null,
     agencyId: payload.agencyId ?? null,
     rating: payload.rating ?? null,
