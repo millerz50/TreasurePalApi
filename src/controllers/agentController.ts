@@ -73,7 +73,7 @@ export async function submitApplicationHandler(
       message: body.message,
     };
 
-    if (body.agencyId) payload.agentId = body.agentId;
+    if (body.agentId) payload.agentId = body.agentId;
     if (typeof body.rating === "number") payload.rating = body.rating;
     if (typeof body.verified === "boolean") payload.verified = body.verified;
 
