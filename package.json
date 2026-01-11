@@ -8,8 +8,8 @@
     "clean": "rimraf dist",
     "build:v1": "rimraf dist && tsc --outDir dist/v1",
     "build:v2": "rimraf dist && tsc --outDir dist/v2",
-    "start:v1": "node dist/v1/index.js",
-    "start:v2": "node dist/v2/index.js",
+    "start:v1": "node dist/v1/v1/index.js",
+    "start:v2": "node dist/v2/v2/index.js",
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "migrate": "ts-node src/scripts/migrate.ts"
   },
