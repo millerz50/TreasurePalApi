@@ -1,0 +1,4 @@
+2025-10-31T18:38:03.924Z [ERROR]: AppwriteException: The current user is not authorized to perform the requested action.
+    at _Client.call (C:\Users\johwa\Documents\TreasurePal-backened\node_modules\node-appwrite\src\client.ts:370:12)
+    at processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at C:\Users\johwa\Documents\TreasurePal-backened\src\index.ts:117:5

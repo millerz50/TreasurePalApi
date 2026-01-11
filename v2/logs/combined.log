@@ -1,0 +1,211 @@
+2025-10-31T18:37:04.990Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T18:37:04.983Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T18:37:14.826Z [INFO]: ::1 - - [31/Oct/2025:18:37:14 +0000] "GET / HTTP/1.1" 404 139 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0"
+2025-10-31T18:38:03.924Z [ERROR]: AppwriteException: The current user is not authorized to perform the requested action.
+    at _Client.call (C:\Users\johwa\Documents\TreasurePal-backened\node_modules\node-appwrite\src\client.ts:370:12)
+    at processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at C:\Users\johwa\Documents\TreasurePal-backened\src\index.ts:117:5
+2025-10-31T18:38:03.930Z [INFO]: ::1 - - [31/Oct/2025:18:38:03 +0000] "GET /api/health HTTP/1.1" 500 121 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0"
+2025-10-31T18:38:04.078Z [INFO]: ::1 - - [31/Oct/2025:18:38:04 +0000] "GET /favicon.ico HTTP/1.1" 404 150 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0"
+2025-10-31T18:41:29.072Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T18:41:29.151Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T18:41:45.605Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T18:41:45.633Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T18:41:55.790Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T18:41:55.812Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T18:43:45.602Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T18:43:45.641Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T18:43:50.342Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T18:43:50.389Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T18:44:05.022Z [INFO]: ::1 - - [31/Oct/2025:18:44:05 +0000] "GET /api/health HTTP/1.1" 404 149 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0"
+2025-10-31T18:44:45.101Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T18:44:45.149Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T18:44:49.708Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T18:44:49.731Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T18:44:54.282Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T18:44:54.292Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T18:44:57.062Z [INFO]: ::1 - - [31/Oct/2025:18:44:57 +0000] "GET /api/health HTTP/1.1" 500 176 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0"
+2025-10-31T18:49:10.619Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T18:49:14.918Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T18:49:18.348Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T18:49:19.775Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T18:49:26.704Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T18:49:29.455Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T18:49:31.388Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T18:49:33.929Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T18:49:36.780Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T18:49:38.944Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T18:49:42.050Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T18:49:46.959Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T18:49:48.780Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T18:50:25.224Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T18:50:29.407Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T18:50:40.775Z [INFO]: ::1 - - [31/Oct/2025:18:50:40 +0000] "GET /api/health HTTP/1.1" 500 176 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0"
+2025-10-31T18:50:56.964Z [INFO]: 🛑 Shutting down gracefully...
+2025-10-31T18:51:11.327Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T18:51:19.405Z [INFO]: ::1 - - [31/Oct/2025:18:51:19 +0000] "GET /api/health HTTP/1.1" 500 176 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0"
+2025-10-31T19:07:12.903Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T19:07:18.424Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T19:07:21.734Z [INFO]: ::1 - - [31/Oct/2025:19:07:21 +0000] "GET /api/health HTTP/1.1" 500 176 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0"
+2025-10-31T19:07:26.263Z [INFO]: ::1 - - [31/Oct/2025:19:07:26 +0000] "GET /api/health HTTP/1.1" 500 176 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0"
+2025-10-31T19:09:13.104Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T19:09:17.479Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T19:09:34.677Z [INFO]: 🛑 Shutting down gracefully...
+2025-10-31T19:09:50.535Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T19:12:18.858Z [INFO]: ::1 - - [31/Oct/2025:19:12:18 +0000] "GET /api/health HTTP/1.1" 500 176 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0"
+2025-10-31T19:12:22.798Z [INFO]: ::1 - - [31/Oct/2025:19:12:22 +0000] "GET /api/health HTTP/1.1" 500 176 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0"
+2025-10-31T19:16:55.991Z [INFO]: ::1 - - [31/Oct/2025:19:16:55 +0000] "GET /api/health HTTP/1.1" 500 176 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0"
+2025-10-31T19:19:04.418Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T19:32:48.732Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T19:32:50.031Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T19:32:55.066Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T19:32:58.702Z [INFO]: ::1 - - [31/Oct/2025:19:32:58 +0000] "GET /api/health HTTP/1.1" 500 176 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0"
+2025-10-31T19:36:57.653Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T19:37:02.616Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T19:37:06.336Z [INFO]: ::1 - - [31/Oct/2025:19:37:06 +0000] "GET /api/health HTTP/1.1" 500 176 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0"
+2025-10-31T19:37:39.896Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T19:37:52.745Z [INFO]: ::1 - - [31/Oct/2025:19:37:52 +0000] "GET /api/health HTTP/1.1" 500 176 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0"
+2025-10-31T22:03:13.116Z [INFO]: ::1 - - [31/Oct/2025:22:03:13 +0000] "GET /api/health HTTP/1.1" 500 176 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0"
+2025-10-31T22:12:34.196Z [INFO]: 🛑 Shutting down gracefully...
+2025-10-31T22:12:52.716Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T22:12:56.627Z [INFO]: ::1 - - [31/Oct/2025:22:12:56 +0000] "GET /api/health HTTP/1.1" 500 176 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0"
+2025-10-31T22:13:09.574Z [INFO]: ::1 - - [31/Oct/2025:22:13:09 +0000] "GET /api/health HTTP/1.1" 500 176 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0"
+2025-10-31T22:15:37.213Z [INFO]: ::1 - - [31/Oct/2025:22:15:37 +0000] "GET /api/debug HTTP/1.1" 404 148 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0"
+2025-10-31T22:16:16.522Z [INFO]: ::1 - - [31/Oct/2025:22:16:16 +0000] "GET /api/health HTTP/1.1" 500 176 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0"
+2025-10-31T22:20:49.588Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T22:20:54.423Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T22:20:59.380Z [INFO]: 🛑 Shutting down gracefully...
+2025-10-31T22:21:12.949Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T22:21:21.108Z [INFO]: ::1 - - [31/Oct/2025:22:21:21 +0000] "GET /api/health HTTP/1.1" 500 183 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0"
+2025-10-31T22:43:01.871Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T22:43:06.999Z [INFO]: ::1 - - [31/Oct/2025:22:43:06 +0000] "GET /api/health HTTP/1.1" 500 183 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0"
+2025-10-31T22:59:15.838Z [INFO]: 🛑 Shutting down gracefully...
+2025-10-31T22:59:28.220Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T22:59:32.342Z [INFO]: ::1 - - [31/Oct/2025:22:59:32 +0000] "GET /api/health HTTP/1.1" 500 183 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0"
+2025-10-31T23:27:07.155Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T23:27:13.923Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T23:27:45.547Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-10-31T23:27:49.567Z [INFO]: ::1 - - [31/Oct/2025:23:27:49 +0000] "GET /api/health HTTP/1.1" 500 157 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0"
+2025-10-31T23:39:18.346Z [INFO]: ::1 - - [31/Oct/2025:23:39:18 +0000] "GET /api/health HTTP/1.1" 500 157 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0"
+2025-11-01T11:26:46.683Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-01T11:26:51.759Z [INFO]: ::1 - - [01/Nov/2025:11:26:51 +0000] "GET / HTTP/1.1" 404 139 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
+2025-11-01T11:27:14.205Z [INFO]: ::1 - - [01/Nov/2025:11:27:14 +0000] "GET /api/health HTTP/1.1" 500 157 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
+2025-11-01T11:27:14.317Z [INFO]: ::1 - - [01/Nov/2025:11:27:14 +0000] "GET /favicon.ico HTTP/1.1" 404 150 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
+2025-11-01T11:40:26.086Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-01T11:40:34.787Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-01T11:42:01.897Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-01T11:42:07.193Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-01T11:43:17.784Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-01T11:43:22.675Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-01T11:45:57.441Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-01T11:46:02.266Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-01T11:46:56.074Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-01T11:47:00.292Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-01T11:47:05.160Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-01T11:47:06.351Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-01T11:47:12.590Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-01T11:47:35.487Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-01T11:47:43.522Z [INFO]: ::1 - - [01/Nov/2025:11:47:43 +0000] "GET /api/health HTTP/1.1" 500 157 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
+2025-11-01T12:12:19.514Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-01T12:12:28.475Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-01T12:12:37.166Z [INFO]: ::1 - - [01/Nov/2025:12:12:37 +0000] "GET /api/health HTTP/1.1" 500 157 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
+2025-11-01T12:19:11.137Z [INFO]: 🛑 Shutting down gracefully...
+2025-11-01T12:19:22.668Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-01T12:19:30.471Z [INFO]: ::1 - - [01/Nov/2025:12:19:30 +0000] "GET /api/health HTTP/1.1" 500 157 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
+2025-11-01T12:24:06.136Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-01T12:24:11.422Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-01T12:24:24.673Z [INFO]: ::1 - - [01/Nov/2025:12:24:24 +0000] "GET /api/health HTTP/1.1" 500 157 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
+2025-11-16T21:17:36.846Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-16T21:17:43.559Z [INFO]: ::1 - - [16/Nov/2025:21:17:43 +0000] "GET / HTTP/1.1" 404 139 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
+2025-11-16T21:18:03.667Z [INFO]: ::1 - - [16/Nov/2025:21:18:03 +0000] "GET /api/health HTTP/1.1" 200 86 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
+2025-11-16T21:18:03.757Z [INFO]: ::1 - - [16/Nov/2025:21:18:03 +0000] "GET /favicon.ico HTTP/1.1" 404 150 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
+2025-11-16T22:27:34.454Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-16T22:27:38.082Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-16T22:34:13.483Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-16T22:35:09.079Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-16T22:35:13.473Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-16T22:46:14.941Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-16T22:46:52.704Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-16T22:46:58.496Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-16T22:59:31.074Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-16T22:59:35.799Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-16T23:06:46.860Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-16T23:06:51.608Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-16T23:12:28.986Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-16T23:12:33.465Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-16T23:20:07.348Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-16T23:37:36.532Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-16T23:37:41.346Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-16T23:37:45.426Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-17T09:52:34.801Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-17T09:52:39.252Z [INFO]: ::1 - - [17/Nov/2025:09:52:39 +0000] "GET / HTTP/1.1" 404 139 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
+2025-11-17T09:52:56.588Z [INFO]: ::1 - - [17/Nov/2025:09:52:56 +0000] "GET /api/health HTTP/1.1" 503 134 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
+2025-11-17T09:52:56.906Z [INFO]: ::1 - - [17/Nov/2025:09:52:56 +0000] "GET /favicon.ico HTTP/1.1" 404 150 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
+2025-11-17T09:54:10.523Z [INFO]: 🛑 Shutting down gracefully...
+2025-11-17T09:54:36.846Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-17T09:54:42.298Z [INFO]: ::1 - - [17/Nov/2025:09:54:42 +0000] "GET /api/health HTTP/1.1" 503 134 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
+2025-11-17T09:54:54.281Z [INFO]: 🛑 Shutting down gracefully...
+2025-11-17T09:59:01.581Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-17T09:59:07.870Z [INFO]: ::1 - - [17/Nov/2025:09:59:07 +0000] "GET /api/health HTTP/1.1" 503 134 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
+2025-11-17T10:01:23.372Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-17T10:01:30.538Z [INFO]: ::1 - - [17/Nov/2025:10:01:30 +0000] "GET /api/health HTTP/1.1" 503 134 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
+2025-11-17T10:01:30.850Z [INFO]: ::1 - - [17/Nov/2025:10:01:30 +0000] "GET /api/health HTTP/1.1" 503 134 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
+2025-11-17T10:01:59.295Z [INFO]: ::1 - - [17/Nov/2025:10:01:59 +0000] "GET /api/health HTTP/1.1" 503 134 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
+2025-11-17T10:02:23.249Z [INFO]: 🛑 Shutting down gracefully...
+2025-11-17T10:10:45.325Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-17T10:10:53.323Z [INFO]: ::1 - - [17/Nov/2025:10:10:53 +0000] "GET /api/health HTTP/1.1" 200 86 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
+2025-11-20T16:31:37.056Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-20T16:33:29.909Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-20T16:33:31.660Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-20T16:33:37.865Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-20T16:33:55.610Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-11-20T16:34:02.506Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-12-01T18:38:51.047Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-12-01T18:38:56.363Z [INFO]: ::1 - - [01/Dec/2025:18:38:56 +0000] "GET / HTTP/1.1" 404 139 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
+2025-12-01T18:42:59.697Z [INFO]: 🛑 Shutting down gracefully...
+2025-12-02T10:42:52.528Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-12-02T10:43:02.035Z [INFO]: ::1 - - [02/Dec/2025:10:43:02 +0000] "GET / HTTP/1.1" 404 139 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
+2025-12-02T10:43:09.222Z [INFO]: ::1 - - [02/Dec/2025:10:43:09 +0000] "GET /api/health HTTP/1.1" 404 149 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
+2025-12-02T10:46:05.804Z [INFO]: ::1 - - [02/Dec/2025:10:46:05 +0000] "GET /api/health/health HTTP/1.1" 200 86 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
+2025-12-02T10:46:06.202Z [INFO]: ::1 - - [02/Dec/2025:10:46:06 +0000] "GET /favicon.ico HTTP/1.1" 404 150 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
+2025-12-02T10:46:46.996Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-12-02T10:46:52.041Z [INFO]: ::1 - - [02/Dec/2025:10:46:52 +0000] "GET /api/health/health HTTP/1.1" 200 86 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
+2025-12-02T10:46:54.555Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-12-02T10:46:58.904Z [INFO]: ::1 - - [02/Dec/2025:10:46:58 +0000] "GET /api/health/ HTTP/1.1" 404 150 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
+2025-12-02T10:47:05.153Z [INFO]: ::1 - - [02/Dec/2025:10:47:05 +0000] "GET /api/health HTTP/1.1" 404 149 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
+2025-12-02T10:47:12.932Z [INFO]: 🛑 Shutting down gracefully...
+2025-12-02T10:47:22.901Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-12-02T10:47:29.589Z [INFO]: ::1 - - [02/Dec/2025:10:47:29 +0000] "GET /api/health HTTP/1.1" 404 149 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
+2025-12-02T10:47:31.652Z [INFO]: ::1 - - [02/Dec/2025:10:47:31 +0000] "GET /api/health HTTP/1.1" 404 149 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
+2025-12-02T10:47:38.969Z [INFO]: ::1 - - [02/Dec/2025:10:47:38 +0000] "GET /api/health/health HTTP/1.1" 200 86 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
+2025-12-02T10:48:18.155Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-12-02T10:48:24.036Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-12-02T10:48:28.102Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-12-02T10:48:33.456Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-12-02T10:48:53.380Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-12-02T10:49:01.275Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-12-02T10:49:01.468Z [INFO]: ::1 - - [02/Dec/2025:10:49:01 +0000] "GET /api/health/health HTTP/1.1" 404 156 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
+2025-12-02T10:49:07.020Z [INFO]: ::1 - - [02/Dec/2025:10:49:07 +0000] "GET /api/health/ HTTP/1.1" 500 94 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
+2025-12-02T10:49:15.805Z [INFO]: ::1 - - [02/Dec/2025:10:49:15 +0000] "GET /api/health/ HTTP/1.1" 500 94 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
+2025-12-02T10:49:22.763Z [INFO]: 🛑 Shutting down gracefully...
+2025-12-02T10:49:34.608Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-12-02T10:49:45.728Z [INFO]: ::1 - - [02/Dec/2025:10:49:45 +0000] "GET /api/health/ HTTP/1.1" 500 94 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
+2025-12-02T10:49:52.642Z [INFO]: ::1 - - [02/Dec/2025:10:49:52 +0000] "GET /api/health/ HTTP/1.1" 500 94 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
+2025-12-02T10:49:59.172Z [INFO]: ::1 - - [02/Dec/2025:10:49:59 +0000] "GET /api/health/health HTTP/1.1" 404 156 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
+2025-12-02T10:50:05.412Z [INFO]: ::1 - - [02/Dec/2025:10:50:05 +0000] "GET /api/health HTTP/1.1" 500 94 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
+2025-12-02T10:52:21.848Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-12-02T10:52:27.359Z [INFO]: ::1 - - [02/Dec/2025:10:52:27 +0000] "GET /api/health HTTP/1.1" 404 149 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
+2025-12-02T10:52:29.863Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-12-02T10:52:32.267Z [INFO]: ::1 - - [02/Dec/2025:10:52:32 +0000] "GET /api/health/health HTTP/1.1" 200 86 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
+2025-12-02T10:54:52.663Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-12-02T10:54:59.582Z [INFO]: 🚀 Server running on http://localhost:4011
+2025-12-02T10:55:01.369Z [INFO]: ::1 - - [02/Dec/2025:10:55:01 +0000] "GET /api/health/health HTTP/1.1" 404 156 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
+2025-12-02T10:55:07.253Z [INFO]: ::1 - - [02/Dec/2025:10:55:07 +0000] "GET /api/health HTTP/1.1" 200 86 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
+2025-12-02T10:55:38.812Z [INFO]: ::1 - - [02/Dec/2025:10:55:38 +0000] "GET /api/properties/all HTTP/1.1" 200 2 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0"
+2025-12-04T09:22:40.559Z [INFO]: 🚀 Server running on port 4011
+2025-12-04T10:04:13.559Z [INFO]: 🚀 Server running on port 4011
+2025-12-04T10:04:20.944Z [INFO]: 🚀 Server running on port 4011
+2025-12-04T10:06:25.397Z [INFO]: 🚀 Server running on port 4011
+2025-12-04T10:06:30.065Z [INFO]: 🚀 Server running on port 4011
+2025-12-04T10:06:36.915Z [INFO]: 🚀 Server running on port 4011
+2025-12-04T10:08:46.314Z [INFO]: 🛑 Shutting down gracefully...
