@@ -144,7 +144,7 @@ app.use(
    RATE LIMITING
 ======================================================= */
 app.use(
-  "/api",
+  "/api/v2",
   rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 100,
@@ -183,27 +183,27 @@ app.get("/", (_req: Request, res: Response) => {
 });
 
 /* =======================================================
-   API ROUTES
+   API ROUTES (mapped to /api/v2)
 ======================================================= */
-app.use("/api/properties", propertiesRoutes);
-app.use("/api/dashboard", dashboardRouter);
-app.use("/api/users", userRoutes);
-app.use("/api/storage", storageRoutes);
-app.use("/api/agents", agentsRoutes);
-app.use("/api/blogs", blogRoutes);
-app.use("/api/health", healthRoutes);
-app.use("/api/activity", activityRouter);
+app.use("/api/v2/properties", propertiesRoutes);
+app.use("/api/v2/dashboard", dashboardRouter);
+app.use("/api/v2/users", userRoutes);
+app.use("/api/v2/storage", storageRoutes);
+app.use("/api/v2/agents", agentsRoutes);
+app.use("/api/v2/blogs", blogRoutes);
+app.use("/api/v2/health", healthRoutes);
+app.use("/api/v2/activity", activityRouter);
 
 /* =======================================================
    OAUTH
 ======================================================= */
 app.get(
-  "/api/auth/google",
+  "/api/v2/auth/google",
   passport.authenticate("google", { scope: ["profile", "email"] })
 );
 
 app.get(
-  "/api/auth/google/callback",
+  "/api/v2/auth/google/callback",
   passport.authenticate("google", { failureRedirect: "/signin" }),
   (req, res) => {
     res.redirect(
@@ -213,12 +213,12 @@ app.get(
 );
 
 app.get(
-  "/api/auth/facebook",
+  "/api/v2/auth/facebook",
   passport.authenticate("facebook", { scope: ["email"] })
 );
 
 app.get(
-  "/api/auth/facebook/callback",
+  "/api/v2/auth/facebook/callback",
   passport.authenticate("facebook", { failureRedirect: "/signin" }),
   (req, res) => {
     res.redirect(
@@ -230,26 +230,22 @@ app.get(
 /* =======================================================
    HEALTH CHECK
 ======================================================= */
-app.get("/healthz", (_req, res) => {
+app.get("/api/v2/healthz", (_req, res) => {
   res.status(200).json({ status: "ok" });
 });
 
 /* =======================================================
    ERROR HANDLER (correct 4-arg signature)
-   - safe: checks headersSent and typeof res.status
 ======================================================= */
 app.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
   const message = err instanceof Error ? err.message : String(err);
   logger.error(`❌ Uncaught error: ${message}`, err);
 
-  // If headers already sent, delegate to the default handler
   if ((res as any).headersSent) {
     return next(err);
   }
 
-  // Defensive: ensure res.status exists before calling
   if (typeof (res as any).status !== "function") {
-    // nothing we can do safely here
     logger.error(
       "Response object does not have status(); cannot send error body"
     );
