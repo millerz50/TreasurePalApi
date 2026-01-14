@@ -1,4 +1,3 @@
-// server/routes/agentRoutes.ts
 import express from "express";
 import {
   approveApplicationHandler,
@@ -7,7 +6,7 @@ import {
   rejectApplicationHandler,
   submitApplicationHandler,
 } from "../controllers/agentController";
-import { verifyToken } from "../middleware/verifyToken";
+import { verifyToken, verifyTokenAndAdmin } from "../middleware/verifyToken";
 
 const router = express.Router();
 
@@ -19,20 +18,24 @@ const router = express.Router();
 router.post("/apply", submitApplicationHandler);
 
 /**
- * Admin endpoints (require verifyToken middleware to populate req.user with roles).
+ * Admin endpoints (require verifyTokenAndAdmin middleware to enforce admin role).
  * GET  /api/agents/applications/pending   -> list pending applications
  * POST /api/agents/applications/:id/approve -> approve application
  * POST /api/agents/applications/:id/reject  -> reject application
  */
-router.get("/applications/pending", verifyToken, listPendingHandler);
+router.get("/applications/pending", verifyTokenAndAdmin, listPendingHandler);
 
 router.post(
   "/applications/:id/approve",
-  verifyToken,
+  verifyTokenAndAdmin,
   approveApplicationHandler
 );
 
-router.post("/applications/:id/reject", verifyToken, rejectApplicationHandler);
+router.post(
+  "/applications/:id/reject",
+  verifyTokenAndAdmin,
+  rejectApplicationHandler
+);
 
 /**
  * Agent metrics endpoint
