@@ -11,17 +11,12 @@ import { verifyToken, verifyTokenAndAdmin } from "../middleware/verifyToken";
 const router = express.Router();
 
 /**
- * Public endpoint for users to submit an agent application.
- * POST /api/agents/apply
- * Body: { accountid, userId?, fullName?, email?, phone?, city?, licenseNumber?, agencyId?, message? }
+ * Public: submit agent application
  */
 router.post("/apply", submitApplicationHandler);
 
 /**
- * Admin endpoints (require verifyTokenAndAdmin middleware to enforce admin role).
- * GET  /api/agents/applications/pending   -> list pending applications
- * POST /api/agents/applications/:id/approve -> approve application
- * POST /api/agents/applications/:id/reject  -> reject application
+ * Admin-only routes
  */
 router.get("/applications/pending", verifyTokenAndAdmin, listPendingHandler);
 
@@ -38,9 +33,7 @@ router.post(
 );
 
 /**
- * Agent metrics endpoint
- * GET /api/agents/metrics
- * Expects verifyToken to populate req.agent or req.user
+ * Agent / User metrics
  */
 router.get("/metrics", verifyToken, getMetricsHandler);
 

@@ -12,7 +12,7 @@ declare global {
       authUser?: AuthenticatedUser;
 
       // Account ID from Appwrite
-      accountId?: string;
+      UserId?: string;
     }
   }
 }

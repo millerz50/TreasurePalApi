@@ -5,7 +5,7 @@ import { UserRole } from "../services/user/user.types";
 import { AuthenticatedUser } from "../types/authenticatedUser";
 
 /* =========================
-   Extend Express Request type
+   Extend Express Request
 ========================= */
 declare global {
   namespace Express {
@@ -17,10 +17,7 @@ declare global {
 }
 
 /* =========================
-   Middleware: Verify JWT and attach authenticated user info
-   - Uses a JWT client to validate the session (Account.get)
-   - Uses a server client (API key) to query the users collection (Databases)
-   - Attaches req.authUser and req.accountId
+   SESSION-BASED AUTH MIDDLEWARE
 ========================= */
 export async function verifyToken(
   req: Request,
@@ -28,37 +25,32 @@ export async function verifyToken(
   next: NextFunction
 ) {
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) {
-      return res
-        .status(401)
-        .json({ error: "Unauthorized: Missing Authorization header" });
-    }
-
-    const token = authHeader.replace(/^Bearer\s+/i, "").trim();
-    if (!token) {
-      return res
-        .status(401)
-        .json({ error: "Unauthorized: Invalid token format" });
-    }
-
-    // 1) Client with JWT: validate the token and fetch the account
-    const jwtClient = new Client()
+    /* ---------------------------------
+       1️⃣ Client using SESSION (cookies)
+    ---------------------------------- */
+    const client = new Client()
       .setEndpoint(process.env.APPWRITE_ENDPOINT!)
-      .setProject(process.env.APPWRITE_PROJECT_ID!)
-      .setJWT(token);
+      .setProject(process.env.APPWRITE_PROJECT_ID!);
 
-    const account = new Account(jwtClient);
-
-    console.log("➡️ [verifyToken] Verifying session with Account.get()");
-    const session = await account.get();
-    if (!session?.$id) {
-      console.error("❌ [verifyToken] Account.get() returned no $id");
-      return res.status(401).json({ error: "Unauthorized: Invalid session" });
+    if (req.headers.cookie) {
+      client.setSession(req.headers.cookie); // ✅ CRITICAL
+    } else {
+      return res.status(401).json({ error: "Unauthorized: No session cookie" });
     }
 
-    // 2) Server client with API key: use for privileged DB queries
-    //    This avoids user_unauthorized when listing documents in the users collection
+    /* ---------------------------------
+       2️⃣ Validate Appwrite session
+    ---------------------------------- */
+    const account = new Account(client);
+    const sessionUser = await account.get();
+
+    if (!sessionUser?.$id) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    /* ---------------------------------
+       3️⃣ Server client for DB access
+    ---------------------------------- */
     const serverClient = new Client()
       .setEndpoint(process.env.APPWRITE_ENDPOINT!)
       .setProject(process.env.APPWRITE_PROJECT_ID!)
@@ -66,66 +58,56 @@ export async function verifyToken(
 
     const databases = new Databases(serverClient);
 
-    // Query users collection by accountid (account.$id)
+    /* ---------------------------------
+       4️⃣ Load user profile
+    ---------------------------------- */
     const dbId = process.env.APPWRITE_DATABASE_ID!;
     const usersTableId = process.env.APPWRITE_USERTABLE_ID!;
 
-    console.log(
-      "➡️ [verifyToken] Looking up profile for accountId:",
-      session.$id
-    );
-    const userDocs = await databases.listDocuments(dbId, usersTableId, [
-      Query.equal("accountid", session.$id),
+    const result = await databases.listDocuments(dbId, usersTableId, [
+      Query.equal("accountid", sessionUser.$id),
     ]);
 
-    const profile = userDocs.documents[0];
+    const profile = result.documents[0];
     if (!profile) {
-      console.warn(
-        "⚠️ [verifyToken] Profile not found for accountId:",
-        session.$id
-      );
       return res.status(404).json({ error: "Profile not found" });
     }
 
-    // Attach authenticated user info
-    const roles: UserRole[] = Array.isArray(profile.roles) ? profile.roles : [];
+    /* ---------------------------------
+       5️⃣ Attach authenticated user
+    ---------------------------------- */
+    const roles: UserRole[] = Array.isArray(profile.roles)
+      ? profile.roles
+      : ["user"];
+
     req.authUser = {
-      id: session.$id,
+      id: sessionUser.$id,
       email: profile.email,
       roles,
-      role: roles.length > 0 ? roles[0] : ("user" as UserRole),
+      role: roles[0],
     };
-    req.accountId = session.$id;
 
-    console.log(
-      "🔐 [verifyToken] Authenticated user:",
-      req.accountId,
-      req.authUser.roles
-    );
+    req.accountId = sessionUser.$id;
 
     return next();
-  } catch (err: any) {
-    console.error("❌ [verifyToken] Auth error:", err?.message || err);
-    // If Appwrite returned a structured error, include type for debugging
-    if (err?.type === "user_unauthorized" || err?.code === 401) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
+  } catch (err) {
+    console.error("❌ verifyToken error:", err);
     return res.status(401).json({ error: "Unauthorized" });
   }
 }
 
 /* =========================
-   Middleware: Verify JWT + Admin role
+   ADMIN GUARD
 ========================= */
 export async function verifyTokenAndAdmin(
   req: Request,
   res: Response,
   next: NextFunction
 ) {
-  await verifyToken(req, res, async () => {
-    if (!req.authUser || !req.authUser.roles.includes("admin")) {
+  await verifyToken(req, res, () => {
+    if (!req.authUser?.roles.includes("admin")) {
       return res.status(403).json({ error: "Admin access required" });
     }
-    return next();
+    next();
   });
 }
