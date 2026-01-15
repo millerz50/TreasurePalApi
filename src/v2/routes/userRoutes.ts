@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import express from "express";
 import multer from "multer";
 import sdk, { Client, ID } from "node-appwrite";
@@ -24,7 +23,7 @@ import {
   spendCreditsController,
 } from "../controllers/creditsController";
 
-import { authMiddleware } from "../middleware/authMiddleware";
+import { verifyToken, verifyTokenAndAdmin } from "../middleware/verifyToken";
 
 const router = express.Router();
 
@@ -46,41 +45,33 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 /* ======================================================
    FILE UPLOAD (Avatar / Profile Image)
-   POST /users/upload
 ====================================================== */
-router.post(
-  "/upload",
-  authMiddleware,
-  upload.single("file"),
-  async (req, res) => {
-    try {
-      if (!req.file) {
-        return res.status(400).json({ error: "No file provided" });
-      }
-
-      const bucketId = process.env.APPWRITE_BUCKET_ID!;
-      // Cast buffer to any so TS stops expecting a browser File
-      const uploaded = await storage.createFile(
-        bucketId,
-        ID.unique(),
-        req.file.buffer as any
-      );
-
-      return res.json({
-        status: "SUCCESS",
-        fileId: uploaded.$id,
-      });
-    } catch (err: any) {
-      return res.status(500).json({
-        error: err?.message || "File upload failed",
-      });
+router.post("/upload", verifyToken, upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "No file provided" });
     }
+
+    const bucketId = process.env.APPWRITE_BUCKET_ID!;
+    const uploaded = await storage.createFile(
+      bucketId,
+      ID.unique(),
+      req.file.buffer as any
+    );
+
+    return res.json({
+      status: "SUCCESS",
+      fileId: uploaded.$id,
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      error: err?.message || "File upload failed",
+    });
   }
-);
+});
 
 /* ======================================================
    OTP VERIFICATION
-   POST /users/verify-phone
 ====================================================== */
 router.post("/verify-phone", async (req, res) => {
   try {
@@ -113,31 +104,31 @@ router.post("/login", loginUser);
 /* ======================================================
    PROFILE
 ====================================================== */
-router.get("/me", authMiddleware, getUserProfile);
+router.get("/me", verifyToken, getUserProfile);
 
 /* ======================================================
    USERS
 ====================================================== */
-router.get("/", authMiddleware, getAllUsers);
-router.get("/agents", authMiddleware, getAgents);
-router.get("/:id", authMiddleware, getUserById);
+router.get("/", verifyTokenAndAdmin, getAllUsers);
+router.get("/agents", verifyTokenAndAdmin, getAgents);
+router.get("/:id", verifyTokenAndAdmin, getUserById);
 
-router.put("/:id", authMiddleware, updateUser);
-router.patch("/:id", authMiddleware, editUser);
-router.delete("/:id", authMiddleware, deleteUser);
+router.put("/:id", verifyTokenAndAdmin, updateUser);
+router.patch("/:id", verifyTokenAndAdmin, editUser);
+router.delete("/:id", verifyTokenAndAdmin, deleteUser);
 
 /* ======================================================
    ADMIN — ROLE & STATUS
 ====================================================== */
-router.patch("/:id/roles", authMiddleware, setRoles);
-router.post("/:id/approve-agent", authMiddleware, approveAgent);
-router.patch("/:id/status", authMiddleware, setStatus);
+router.patch("/:id/roles", verifyTokenAndAdmin, setRoles);
+router.post("/:id/approve-agent", verifyTokenAndAdmin, approveAgent);
+router.patch("/:id/status", verifyTokenAndAdmin, setStatus);
 
 /* ======================================================
    💰 CREDITS
 ====================================================== */
-router.get("/:id/credits", authMiddleware, getCreditsController);
-router.post("/:id/credits/add", authMiddleware, addCreditsController);
-router.post("/:id/credits/spend", authMiddleware, spendCreditsController);
+router.get("/:id/credits", verifyTokenAndAdmin, getCreditsController);
+router.post("/:id/credits/add", verifyTokenAndAdmin, addCreditsController);
+router.post("/:id/credits/spend", verifyTokenAndAdmin, spendCreditsController);
 
 export default router;
