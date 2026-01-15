@@ -26,22 +26,34 @@ export async function verifyToken(
 ) {
   try {
     /* ---------------------------------
-       1️⃣ Client using SESSION (cookies)
+       1️⃣ Extract Appwrite session cookie
     ---------------------------------- */
-    const client = new Client()
-      .setEndpoint(process.env.APPWRITE_ENDPOINT!)
-      .setProject(process.env.APPWRITE_PROJECT_ID!);
+    const cookieHeader = req.headers.cookie;
 
-    if (req.headers.cookie) {
-      client.setSession(req.headers.cookie); // ✅ CRITICAL
-    } else {
-      return res.status(401).json({ error: "Unauthorized: No session cookie" });
+    if (!cookieHeader) {
+      return res.status(401).json({ error: "Unauthorized: No cookies" });
+    }
+
+    // 🔑 Extract a_session_* cookie ONLY
+    const sessionCookie = cookieHeader
+      .split(";")
+      .find((c) => c.trim().startsWith("a_session_"));
+
+    if (!sessionCookie) {
+      return res
+        .status(401)
+        .json({ error: "Unauthorized: No Appwrite session" });
     }
 
     /* ---------------------------------
-       2️⃣ Validate Appwrite session
+       2️⃣ Client using SESSION
     ---------------------------------- */
-    const account = new Account(client);
+    const sessionClient = new Client()
+      .setEndpoint(process.env.APPWRITE_ENDPOINT!)
+      .setProject(process.env.APPWRITE_PROJECT_ID!)
+      .setSession(sessionCookie.trim()); // ✅ CORRECT
+
+    const account = new Account(sessionClient);
     const sessionUser = await account.get();
 
     if (!sessionUser?.$id) {
@@ -49,7 +61,7 @@ export async function verifyToken(
     }
 
     /* ---------------------------------
-       3️⃣ Server client for DB access
+       3️⃣ Server client (DB access)
     ---------------------------------- */
     const serverClient = new Client()
       .setEndpoint(process.env.APPWRITE_ENDPOINT!)
