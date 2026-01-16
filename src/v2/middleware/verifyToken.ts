@@ -101,15 +101,22 @@ export async function verifyToken(
 /* =========================
    ADMIN GUARD
 ========================= */
-export function verifyTokenAndAdmin(
+export async function verifyTokenAndAdmin(
   req: Request,
   res: Response,
   next: NextFunction
 ) {
-  verifyToken(req, res, () => {
+  try {
+    await verifyToken(req, res, () => Promise.resolve()); // call verifyToken properly
+
+    // Check admin role
     if (!req.authUser?.roles.includes("admin")) {
       return res.status(403).json({ error: "Admin access required" });
     }
-    next();
-  });
+
+    return next();
+  } catch (err) {
+    console.error("❌ verifyTokenAndAdmin error:", err);
+    return res.status(401).json({ error: "Unauthorized" });
+  }
 }
