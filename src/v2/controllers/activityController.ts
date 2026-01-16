@@ -1,7 +1,5 @@
-// controllers/activityController.ts
 import { Request, Response } from "express";
 import {
-  fetchActivityByRole,
   fetchActivityForUser,
   fetchRecentActivity,
 } from "../services/activityService";
@@ -9,45 +7,40 @@ import {
 /**
  * GET /api/activity/recent
  * Query params:
- *  - scope: "all" | "agent" | "user" | "public" (default: public)
- *  - agentId, userId (when scope is agent/user)
+ *  - scope: "all" | "user" | "public"
+ *
+ * Auth:
+ *  - scope=all   → admin
+ *  - scope=user  → authenticated user
  */
 export async function getRecentActivityController(req: Request, res: Response) {
   try {
     const scope = (req.query.scope as string) || "public";
+    const accountId = (req.user as any)?.userId;
 
-    let activities: any[] = [];
+    let activities = [];
 
-    if (scope === "all") {
-      // admin-level: return everything (authMiddleware should ensure admin)
-      activities = await fetchRecentActivity(50);
-    } else if (scope === "agent") {
-      const agentId =
-        (req.query.agentId as string) || (req.user as any)?.userId;
-      if (!agentId) {
-        return res.status(400).json({ error: "agentId required" });
-      }
-      // ✅ filter by specific agentId
-      activities = await fetchActivityByRole("agent", agentId, 50);
-    } else if (scope === "user") {
-      const userId = (req.query.userId as string) || (req.user as any)?.userId;
-      if (!userId) {
-        return res.status(400).json({ error: "userId required" });
-      }
-      activities = await fetchActivityForUser(userId, 50);
-    } else {
-      // public (if you want to filter by a "publicOnly" flag, add that in service)
-      activities = await fetchRecentActivity(20);
+    switch (scope) {
+      case "all":
+        // 🔐 admin enforced by middleware
+        activities = await fetchRecentActivity(50);
+        break;
+
+      case "user":
+        if (!accountId) {
+          return res.status(401).json({ error: "Unauthorized" });
+        }
+        activities = await fetchActivityForUser(accountId, 50);
+        break;
+
+      default:
+        activities = await fetchRecentActivity(20);
     }
 
-    return res.json({
-      ok: true,
-      scope,
-      count: activities.length,
-      activities,
-    });
+    // ✅ RETURN ARRAY (frontend expects Activity[])
+    return res.json(activities);
   } catch (err: any) {
-    console.error("getRecentActivityController error:", err?.message ?? err);
+    console.error("getRecentActivityController error:", err?.stack ?? err);
     return res.status(500).json({ error: "Failed to fetch recent activity" });
   }
 }

@@ -1,4 +1,3 @@
-// services/activity/activityService.ts
 import { ID, Query, TablesDB } from "node-appwrite";
 // activityService.ts
 import { getClient, getEnv } from "./lib/env";
@@ -8,7 +7,7 @@ import { Activity, ActivityAction } from "./services/activity/activity.types";
 const DB_ID = getEnv("APPWRITE_DATABASE_ID") ?? "";
 const ACTIVITY_TABLE = getEnv("APPWRITE_ACTIVITY_TABLE_ID") || "activity";
 
-function getTablesDB(): TablesDB {
+function db(): TablesDB {
   return new TablesDB(getClient());
 }
 
@@ -16,7 +15,7 @@ function getTablesDB(): TablesDB {
    CREATE ACTIVITY
 ====================================================== */
 export async function logActivity(params: {
-  actorId: string;
+  actorId: string; // Appwrite accountId
   actorRole: "user" | "agent" | "admin";
   action: ActivityAction;
   message: string;
@@ -24,7 +23,7 @@ export async function logActivity(params: {
   refId?: string;
   refType?: string;
 }) {
-  return getTablesDB().createRow(DB_ID, ACTIVITY_TABLE, ID.unique(), {
+  return db().createRow(DB_ID, ACTIVITY_TABLE, ID.unique(), {
     actorId: params.actorId,
     actorRole: params.actorRole,
     action: params.action,
@@ -32,15 +31,15 @@ export async function logActivity(params: {
     amount: params.amount ?? null,
     refId: params.refId ?? null,
     refType: params.refType ?? null,
-    createdAt: new Date().toISOString(),
+    createdAt: new Date().toISOString(), // ✅ single source of truth
   });
 }
 
 /* ======================================================
-   FETCH RECENT ACTIVITY
+   FETCH RECENT ACTIVITY (ADMIN / PUBLIC)
 ====================================================== */
 export async function fetchRecentActivity(limit = 20): Promise<Activity[]> {
-  const res = await getTablesDB().listRows(DB_ID, ACTIVITY_TABLE, [
+  const res = await db().listRows(DB_ID, ACTIVITY_TABLE, [
     Query.orderDesc("createdAt"),
     Query.limit(limit),
   ]);
@@ -49,14 +48,14 @@ export async function fetchRecentActivity(limit = 20): Promise<Activity[]> {
 }
 
 /* ======================================================
-   FETCH ACTIVITY BY USER
+   FETCH ACTIVITY FOR USER (ACCOUNT ID)
 ====================================================== */
 export async function fetchActivityForUser(
-  userId: string,
+  accountId: string,
   limit = 20
 ): Promise<Activity[]> {
-  const res = await getTablesDB().listRows(DB_ID, ACTIVITY_TABLE, [
-    Query.equal("actorId", userId),
+  const res = await db().listRows(DB_ID, ACTIVITY_TABLE, [
+    Query.equal("actorId", accountId),
     Query.orderDesc("createdAt"),
     Query.limit(limit),
   ]);
@@ -65,23 +64,23 @@ export async function fetchActivityForUser(
 }
 
 /* ======================================================
-   FETCH ACTIVITY BY ROLE
+   FETCH ACTIVITY BY ROLE (OPTIONAL FILTER)
 ====================================================== */
 export async function fetchActivityByRole(
   role: "user" | "agent" | "admin",
-  actorId?: string,
+  accountId?: string,
   limit = 20
 ): Promise<Activity[]> {
   const queries: any[] = [
     Query.equal("actorRole", role),
-    Query.orderDesc("$createdAt"), // use system field
+    Query.orderDesc("createdAt"),
     Query.limit(limit),
   ];
 
-  if (actorId) {
-    queries.push(Query.equal("actorId", actorId));
+  if (accountId) {
+    queries.push(Query.equal("actorId", accountId));
   }
 
-  const res = await getTablesDB().listRows(DB_ID, ACTIVITY_TABLE, queries);
+  const res = await db().listRows(DB_ID, ACTIVITY_TABLE, queries);
   return res.rows.map(safeFormatActivity);
 }
