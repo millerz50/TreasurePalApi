@@ -10,24 +10,39 @@ function db() {
   return new Databases(getClient());
 }
 
+/* ============================
+   TYPES
+============================ */
+
 export type SigninPayload = {
   email: string;
-  password: string; // kept for API compatibility, NOT used here
+  password?: string; // kept for API compatibility (NOT USED)
   phone?: string;
 };
 
+/* ============================
+   SIGN IN (PROFILE ONLY)
+   ⚠️ AUTH IS DONE VIA APPWRITE
+============================ */
+
 export async function signinUser(payload: SigninPayload) {
-  logStep("START signinUser", { email: payload.email });
+  logStep("signinUser:start", { email: payload.email });
+
+  if (!payload.email) {
+    const err: any = new Error("Email is required");
+    err.status = 400;
+    throw err;
+  }
 
   const normalizedEmail = payload.email.toLowerCase().trim();
 
   /* -----------------------------
-     1️⃣ FETCH USER PROFILE ONLY
-     (AUTH IS DONE ON FRONTEND)
+     1️⃣ FETCH USER PROFILE
   ------------------------------ */
 
   const res = await db().listDocuments(DB_ID, USERS_COLLECTION, [
     Query.equal("email", normalizedEmail),
+    Query.limit(1),
   ]);
 
   if (res.total === 0) {
@@ -39,7 +54,7 @@ export async function signinUser(payload: SigninPayload) {
   const user = res.documents[0];
 
   /* -----------------------------
-     2️⃣ UPDATE LAST LOGIN + PHONE
+     2️⃣ UPDATE LAST LOGIN / PHONE
   ------------------------------ */
 
   const updates: Record<string, any> = {
@@ -55,12 +70,12 @@ export async function signinUser(payload: SigninPayload) {
       await db().updateDocument(DB_ID, USERS_COLLECTION, user.$id, updates);
       Object.assign(user, updates);
     } catch (err) {
-      logError("signinUser.updateProfile", err);
+      logError("signinUser:updateProfile", err);
     }
   }
 
   /* -----------------------------
-     3️⃣ RETURN SAFE PROFILE ONLY
+     3️⃣ RETURN SAFE PROFILE
   ------------------------------ */
 
   return {

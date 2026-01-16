@@ -17,7 +17,7 @@ declare global {
 }
 
 /* =========================
-   SESSION-BASED AUTH MIDDLEWARE
+   JWT-BASED AUTH MIDDLEWARE
 ========================= */
 export async function verifyToken(
   req: Request,
@@ -26,32 +26,23 @@ export async function verifyToken(
 ) {
   try {
     /* ---------------------------------
-       1️⃣ Extract Appwrite session cookie
+       1️⃣ Read Authorization header
     ---------------------------------- */
-    const cookieHeader = req.headers.cookie;
+    const authHeader = req.headers.authorization;
 
-    if (!cookieHeader) {
-      return res.status(401).json({ error: "Unauthorized: No cookies" });
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ error: "Unauthorized: No token" });
     }
 
-    // 🔑 Extract a_session_* cookie ONLY
-    const sessionCookie = cookieHeader
-      .split(";")
-      .find((c) => c.trim().startsWith("a_session_"));
-
-    if (!sessionCookie) {
-      return res
-        .status(401)
-        .json({ error: "Unauthorized: No Appwrite session" });
-    }
+    const jwt = authHeader.replace("Bearer ", "");
 
     /* ---------------------------------
-       2️⃣ Client using SESSION
+       2️⃣ Appwrite client (JWT)
     ---------------------------------- */
     const sessionClient = new Client()
       .setEndpoint(process.env.APPWRITE_ENDPOINT!)
       .setProject(process.env.APPWRITE_PROJECT_ID!)
-      .setSession(sessionCookie.trim()); // ✅ CORRECT
+      .setJWT(jwt);
 
     const account = new Account(sessionClient);
     const sessionUser = await account.get();
@@ -73,12 +64,11 @@ export async function verifyToken(
     /* ---------------------------------
        4️⃣ Load user profile
     ---------------------------------- */
-    const dbId = process.env.APPWRITE_DATABASE_ID!;
-    const usersTableId = process.env.APPWRITE_USERTABLE_ID!;
-
-    const result = await databases.listDocuments(dbId, usersTableId, [
-      Query.equal("accountid", sessionUser.$id),
-    ]);
+    const result = await databases.listDocuments(
+      process.env.APPWRITE_DATABASE_ID!,
+      process.env.APPWRITE_USERTABLE_ID!,
+      [Query.equal("accountid", sessionUser.$id)]
+    );
 
     const profile = result.documents[0];
     if (!profile) {
@@ -111,12 +101,12 @@ export async function verifyToken(
 /* =========================
    ADMIN GUARD
 ========================= */
-export async function verifyTokenAndAdmin(
+export function verifyTokenAndAdmin(
   req: Request,
   res: Response,
   next: NextFunction
 ) {
-  await verifyToken(req, res, () => {
+  verifyToken(req, res, () => {
     if (!req.authUser?.roles.includes("admin")) {
       return res.status(403).json({ error: "Admin access required" });
     }
