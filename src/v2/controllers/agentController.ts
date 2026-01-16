@@ -13,7 +13,7 @@ import {
 } from "../services/user/userService";
 
 /* =========================
-   SUBMIT APPLICATION
+   SUBMIT AGENT APPLICATION
 ========================= */
 export async function submitApplicationHandler(
   req: Request,
@@ -41,8 +41,9 @@ export async function submitApplicationHandler(
         .json({ success: false, message: "message is required" });
     }
 
+    // Correct payload: accountid instead of userId
     const payload = {
-      userId: body.accountid,
+      accountid: body.accountid,
       fullname: body.fullname,
       message: body.message,
       agentId: body.agentId ?? null,
@@ -51,6 +52,7 @@ export async function submitApplicationHandler(
     };
 
     const created = await submitAgentApplication(payload);
+
     return res.status(201).json({ success: true, data: created });
   } catch (err) {
     return next(err);
@@ -58,7 +60,7 @@ export async function submitApplicationHandler(
 }
 
 /* =========================
-   LIST PENDING (ADMIN)
+   LIST PENDING APPLICATIONS (ADMIN)
 ========================= */
 export async function listPendingHandler(
   req: Request,
@@ -147,7 +149,7 @@ export async function rejectApplicationHandler(
 }
 
 /* =========================
-   GET AGENT METRICS
+   GET AGENT DASHBOARD METRICS
 ========================= */
 export async function getMetricsHandler(
   req: Request,
@@ -157,7 +159,7 @@ export async function getMetricsHandler(
   try {
     const accountId = req.accountId!;
     if (!accountId) {
-      return res.status(401).json({ error: "Unauthorized" });
+      return res.status(401).json({ success: false, message: "Unauthorized" });
     }
 
     const userDoc = await getUserByAccountId(accountId).catch(() => null);
