@@ -41,14 +41,14 @@ export async function submitApplicationHandler(
         .json({ success: false, message: "message is required" });
     }
 
-    // Correct payload: accountid instead of userId
+    // All new applications start as unverified
     const payload = {
       accountid: body.accountid,
       fullname: body.fullname,
       message: body.message,
       agentId: body.agentId ?? null,
       rating: body.rating ?? null,
-      verified: body.verified ?? null,
+      verified: false, // ✅ default to false
     };
 
     const created = await submitAgentApplication(payload);
@@ -61,6 +61,7 @@ export async function submitApplicationHandler(
 
 /* =========================
    LIST PENDING APPLICATIONS (ADMIN)
+   Pending = verified === false
 ========================= */
 export async function listPendingHandler(
   req: Request,
@@ -69,7 +70,10 @@ export async function listPendingHandler(
 ) {
   try {
     const limit = Number(req.query.limit ?? 50);
+
+    // fetch applications with verified === false
     const applications = await listPendingApplications(limit);
+
     return res.status(200).json({ success: true, data: applications });
   } catch (err) {
     return next(err);
