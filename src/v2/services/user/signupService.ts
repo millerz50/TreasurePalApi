@@ -1,166 +1,140 @@
-import { Databases, ID, Permission, Query, Role } from "node-appwrite";
-import { getClient, getEnv } from "../../services/lib/env";
+// src/v2/services/user/signupService.ts
+import { Client, ID, Storage } from "node-appwrite";
+import { logError, logStep } from "../../services/lib/logger";
 
-const DB_ID = getEnv("APPWRITE_DATABASE_ID")!;
-const USERS_COLLECTION = getEnv("APPWRITE_USERS_COLLECTION") ?? "users";
-const AGENT_APPLICATIONS_COLLECTION = "agent_profiles";
-const NOTIFICATIONS_COLLECTION = "notifications";
+import { safeFormat } from "../../services/lib/models/user";
+import { createAuthUser } from "./authService";
+import { findByEmail } from "./gettersService";
+import { toUserDocument } from "./user.mapper";
+import type { SignupPayload, UserRole } from "./user.types";
+import { createUserRow, getUserByAccountId } from "./userService";
 
-type UserRole = "user" | "agent" | "admin";
-type UserStatus = "Not Verified" | "Pending" | "Active" | "Suspended";
+import { databases } from "../../index"; // Appwrite client
 
-function db() {
-  return new Databases(getClient());
-}
+const SIGNUP_BONUS_CREDITS = 40;
 
-/* =========================
-   CREATE USER
-========================= */
-export async function createUserRow(payload: Record<string, any>) {
-  const accountid = payload.accountid;
-  if (!accountid) throw new Error("accountid is required");
+/**
+ * Uploads an image to Appwrite storage bucket in Node.js
+ */
+async function uploadProfileImage(
+  client: Client,
+  bucketId: string,
+  buffer: Buffer,
+  filename: string,
+  mimeType: string
+): Promise<string> {
+  const storage = new Storage(client);
 
-  return db().createDocument(DB_ID, USERS_COLLECTION, ID.unique(), payload, [
-    Permission.read(Role.user(accountid)),
-    Permission.read(Role.team("admin")),
-    Permission.update(Role.user(accountid)),
-    Permission.update(Role.team("admin")),
-    Permission.delete(Role.team("admin")),
-  ]);
-}
-
-/* =========================
-   DELETE USER BY ACCOUNT ID
-========================= */
-export async function deleteUserRowByAccountId(accountid: string) {
-  const res = await db().listDocuments(DB_ID, USERS_COLLECTION, [
-    Query.equal("accountid", accountid),
-    Query.limit(1),
-  ]);
-  if (res.total === 0) return null;
-  return db().deleteDocument(DB_ID, USERS_COLLECTION, res.documents[0].$id);
-}
-
-/* =========================
-   GET USER
-========================= */
-export async function getUserByAccountId(accountid: string) {
-  const res = await db().listDocuments(DB_ID, USERS_COLLECTION, [
-    Query.equal("accountid", accountid),
-    Query.limit(1),
-  ]);
-  return res.total > 0 ? res.documents[0] : null;
-}
-
-export async function getUserById(documentId: string) {
   try {
-    return await db().getDocument(DB_ID, USERS_COLLECTION, documentId);
-  } catch {
-    return null;
-  }
-}
+    logStep("Uploading profile image", { bucketId, filename, mimeType });
 
-/* =========================
-   AGENT APPLICATIONS
-========================= */
-export async function submitAgentApplication(payload: {
-  accountid: string; // REQUIRED
-  fullname: string;
-  message: string;
-  agentId?: string | null;
-  rating?: number | null;
-  verified?: boolean | null;
-}) {
-  const doc: Record<string, any> = {
-    accountid: payload.accountid,
-    fullname: payload.fullname,
-    message: payload.message,
-  };
-  if (payload.agentId) doc.agentId = payload.agentId;
-  if (payload.rating !== undefined) doc.rating = payload.rating;
-  if (payload.verified !== undefined) doc.verified = payload.verified;
-
-  return db().createDocument(
-    DB_ID,
-    AGENT_APPLICATIONS_COLLECTION,
-    ID.unique(),
-    doc,
-    [
-      Permission.read(Role.team("admin")),
-      Permission.update(Role.team("admin")),
-      Permission.delete(Role.team("admin")),
-    ]
-  );
-}
-
-export async function listPendingApplications(limit = 50) {
-  const res = await db().listDocuments(DB_ID, AGENT_APPLICATIONS_COLLECTION, [
-    Query.equal("status", "pending"),
-    Query.limit(limit),
-  ]);
-  return res.documents;
-}
-
-export async function getApplicationById(applicationId: string) {
-  try {
-    return await db().getDocument(
-      DB_ID,
-      AGENT_APPLICATIONS_COLLECTION,
-      applicationId
+    const uploaded = await storage.createFile(
+      bucketId,
+      ID.unique(),
+      buffer as any
     );
-  } catch {
-    return null;
+
+    logStep("Profile image uploaded", { fileId: uploaded.$id });
+    return uploaded.$id;
+  } catch (err) {
+    logError("signupService.uploadProfileImage failed", err);
+    throw new Error("Failed to upload profile image");
   }
 }
 
-export async function approveApplication(
-  applicationId: string,
-  adminId: string,
-  reviewNotes?: string
-) {
-  const application = await getApplicationById(applicationId);
-  if (!application) throw new Error("Application not found");
-  if (application.status === "approved") throw new Error("Already approved");
+/**
+ * Signup a new user
+ */
+export async function signupUser(payload: SignupPayload) {
+  logStep("START signupUser", { email: payload.email });
 
-  const user = await getUserByAccountId(application.accountid);
-  if (!user) throw new Error("User not found");
+  if (!payload.email) throw new Error("Email is required");
+  if (!payload.password) throw new Error("Password is required");
 
-  await db().updateDocument(DB_ID, USERS_COLLECTION, user.$id, {
-    roles: Array.from(new Set([...(user.roles || []), "agent", "user"])),
-    status: "Active",
-    approvedAt: new Date().toISOString(),
-  });
+  const normalizedEmail = payload.email.toLowerCase().trim();
+  const accountId = payload.accountid ?? ID.unique();
 
-  return db().updateDocument(
-    DB_ID,
-    AGENT_APPLICATIONS_COLLECTION,
-    applicationId,
-    {
-      status: "approved",
-      reviewedBy: adminId,
-      reviewedAt: new Date().toISOString(),
-      reviewNotes: reviewNotes ?? null,
+  // 1️⃣ Pre-check if user exists
+  const existing = await findByEmail(normalizedEmail).catch(() => null);
+  if (existing) {
+    const err: any = new Error("User already exists with this email");
+    err.status = 409;
+    throw err;
+  }
+
+  // 2️⃣ Create Auth user
+  try {
+    logStep("Creating auth user", { accountId, email: normalizedEmail });
+    await createAuthUser(accountId, normalizedEmail, payload.password);
+    logStep("Auth user created", { accountId });
+  } catch (err) {
+    logError("signupService.authCreate failed", err);
+    throw new Error("Failed to create auth user");
+  }
+
+  // 3️⃣ Server-enforced roles
+  const roles: UserRole[] = ["user"];
+
+  // 4️⃣ Profile image upload
+  let profileImageId: string | undefined;
+  if (payload.profileImage) {
+    try {
+      const { buffer, filename, mimeType } = payload.profileImage as {
+        buffer: Buffer;
+        filename: string;
+        mimeType: string;
+      };
+
+      profileImageId = await uploadProfileImage(
+        databases.client,
+        process.env.APPWRITE_BUCKET_ID || "",
+        buffer,
+        filename,
+        mimeType
+      );
+    } catch (err) {
+      logError("signupService.profileImageUpload failed", err);
+      // continue without profile image
     }
-  );
-}
+  }
 
-export async function rejectApplication(
-  applicationId: string,
-  adminId: string,
-  reviewNotes?: string
-) {
-  const application = await getApplicationById(applicationId);
-  if (!application) throw new Error("Application not found");
-
-  return db().updateDocument(
-    DB_ID,
-    AGENT_APPLICATIONS_COLLECTION,
-    applicationId,
+  // 5️⃣ Build DB document
+  const document = toUserDocument(
     {
-      status: "rejected",
-      reviewedBy: adminId,
-      reviewedAt: new Date().toISOString(),
-      reviewNotes: reviewNotes ?? null,
-    }
+      email: normalizedEmail,
+      firstName: payload.firstName,
+      surname: payload.surname,
+      phone: payload.phone,
+      country: payload.country,
+      location: payload.location,
+      dateOfBirth: payload.dateOfBirth,
+      roles,
+      status: "Pending",
+      profileImageId,
+    },
+    accountId,
+    SIGNUP_BONUS_CREDITS
   );
+
+  // 6️⃣ Create DB row
+  let createdRow;
+  try {
+    logStep("Creating DB row", { accountId });
+    createdRow = await createUserRow(document);
+    logStep("DB row created", { profileId: createdRow.$id });
+  } catch (err) {
+    logError("signupService.createRow failed", err);
+    throw new Error("Failed to create user profile");
+  }
+
+  // 7️⃣ Return safe response
+  const response = {
+    status: "SUCCESS",
+    userId: accountId,
+    profileId: createdRow.$id,
+    profile: safeFormat(createdRow),
+  };
+
+  logStep("signupUser completed", response);
+  return response;
 }
