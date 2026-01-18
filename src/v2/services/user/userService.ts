@@ -197,7 +197,6 @@ export async function listPendingApplications(limit = 50) {
     Query.equal("verified", false),
     Query.limit(limit),
   ]);
-
   return res.documents;
 }
 
@@ -224,10 +223,10 @@ export async function approveAgent(userDocumentId: string) {
     new Set([...(user.roles ?? []), "agent", "user"]),
   );
 
+  // ✅ Only update fields that exist in your Appwrite users collection
   return updateUser(userDocumentId, {
     roles,
     status: "Active",
-    approvedAt: new Date().toISOString(),
   });
 }
 
