@@ -30,10 +30,24 @@ export async function createUserRow(payload: Record<string, any>) {
 }
 
 /* =========================
+   FIND USER BY EMAIL ✅ (FIX)
+========================= */
+export async function findByEmail(email: string) {
+  if (!email) throw new Error("email is required");
+
+  const res = await db().listDocuments(DB_ID, USERS_COLLECTION, [
+    Query.equal("email", email.toLowerCase()),
+    Query.limit(1),
+  ]);
+
+  return res.total ? res.documents[0] : null;
+}
+
+/* =========================
    SUBMIT AGENT APPLICATION
 ========================= */
 export async function submitAgentApplication(payload: {
-  userId: string; // Appwrite Auth User ID
+  userId: string;
   fullname: string;
   message: string;
   rating?: number | null;
@@ -42,8 +56,6 @@ export async function submitAgentApplication(payload: {
   if (!payload.userId) throw new Error("userId is required");
   if (!payload.fullname) throw new Error("fullname is required");
   if (!payload.message) throw new Error("message is required");
-
-  const now = new Date().toISOString();
 
   return db().createDocument(
     DB_ID,
@@ -55,7 +67,7 @@ export async function submitAgentApplication(payload: {
       message: payload.message,
       rating: payload.rating ?? null,
       verified: payload.verified ?? false,
-      createdAt: now,
+      createdAt: new Date().toISOString(),
     },
     [
       Permission.read(Role.team("admin")),
