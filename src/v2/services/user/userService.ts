@@ -9,6 +9,9 @@ const NOTIFICATIONS_COLLECTION = "notifications";
 type UserRole = "user" | "agent" | "admin";
 type UserStatus = "Not Verified" | "Pending" | "Active" | "Suspended";
 
+/* =========================
+   DB HELPER
+========================= */
 function db() {
   return new Databases(getClient());
 }
@@ -17,22 +20,38 @@ function db() {
    CREATE USER
 ========================= */
 export async function createUserRow(payload: Record<string, any>) {
-  const accountId = payload.accountId;
-  if (!accountId) throw new Error("accountId is required");
+  console.log("[createUserRow] payload:", payload);
 
-  return db().createDocument(DB_ID, USERS_COLLECTION, ID.unique(), payload, [
-    Permission.read(Role.user(accountId)),
-    Permission.update(Role.user(accountId)),
-    Permission.read(Role.team("admin")),
-    Permission.update(Role.team("admin")),
-    Permission.delete(Role.team("admin")),
-  ]);
+  const accountId = payload.accountid; // ✅ match schema
+  if (!accountId) {
+    console.error("[createUserRow] ❌ accountid missing");
+    throw new Error("accountid is required");
+  }
+
+  const result = await db().createDocument(
+    DB_ID,
+    USERS_COLLECTION,
+    ID.unique(),
+    payload,
+    [
+      Permission.read(Role.user(accountId)),
+      Permission.update(Role.user(accountId)),
+      Permission.read(Role.team("admin")),
+      Permission.update(Role.team("admin")),
+      Permission.delete(Role.team("admin")),
+    ],
+  );
+
+  console.log("[createUserRow] ✅ created user:", result.$id);
+  return result;
 }
 
 /* =========================
-   FIND USER BY EMAIL ✅ (FIX)
+   FIND USER BY EMAIL
 ========================= */
 export async function findByEmail(email: string) {
+  console.log("[findByEmail] email:", email);
+
   if (!email) throw new Error("email is required");
 
   const res = await db().listDocuments(DB_ID, USERS_COLLECTION, [
@@ -40,6 +59,7 @@ export async function findByEmail(email: string) {
     Query.limit(1),
   ]);
 
+  console.log("[findByEmail] found:", res.total);
   return res.total ? res.documents[0] : null;
 }
 
@@ -53,11 +73,13 @@ export async function submitAgentApplication(payload: {
   rating?: number | null;
   verified?: boolean;
 }) {
+  console.log("[submitAgentApplication] payload:", payload);
+
   if (!payload.userId) throw new Error("userId is required");
   if (!payload.fullname) throw new Error("fullname is required");
   if (!payload.message) throw new Error("message is required");
 
-  return db().createDocument(
+  const result = await db().createDocument(
     DB_ID,
     AGENT_APPLICATIONS_COLLECTION,
     ID.unique(),
@@ -75,16 +97,23 @@ export async function submitAgentApplication(payload: {
       Permission.delete(Role.team("admin")),
     ],
   );
+
+  console.log("[submitAgentApplication] ✅ applicationId:", result.$id);
+  return result;
 }
 
 /* =========================
    LIST PENDING APPLICATIONS
 ========================= */
 export async function listPendingApplications(limit = 50) {
+  console.log("[listPendingApplications] limit:", limit);
+
   const res = await db().listDocuments(DB_ID, AGENT_APPLICATIONS_COLLECTION, [
     Query.equal("verified", false),
     Query.limit(limit),
   ]);
+
+  console.log("[listPendingApplications] found:", res.total);
   return res.documents;
 }
 
@@ -92,17 +121,26 @@ export async function listPendingApplications(limit = 50) {
    USERS
 ========================= */
 export async function getUserByAccountId(accountId: string) {
+  console.log("[getUserByAccountId] accountId:", accountId);
+
   const res = await db().listDocuments(DB_ID, USERS_COLLECTION, [
-    Query.equal("accountId", accountId),
+    Query.equal("accountid", accountId), // ✅ match schema lowercase
     Query.limit(1),
   ]);
+
+  console.log("[getUserByAccountId] found:", res.total);
   return res.total ? res.documents[0] : null;
 }
 
 export async function getUserById(documentId: string) {
+  console.log("[getUserById] documentId:", documentId);
+
   try {
-    return await db().getDocument(DB_ID, USERS_COLLECTION, documentId);
-  } catch {
+    const user = await db().getDocument(DB_ID, USERS_COLLECTION, documentId);
+    console.log("[getUserById] ✅ found");
+    return user;
+  } catch (err) {
+    console.error("[getUserById] ❌ not found");
     return null;
   }
 }
@@ -111,13 +149,18 @@ export async function getUserById(documentId: string) {
    APPLICATIONS
 ========================= */
 export async function getApplicationById(applicationId: string) {
+  console.log("[getApplicationById] applicationId:", applicationId);
+
   try {
-    return await db().getDocument(
+    const app = await db().getDocument(
       DB_ID,
       AGENT_APPLICATIONS_COLLECTION,
       applicationId,
     );
+    console.log("[getApplicationById] ✅ found");
+    return app;
   } catch {
+    console.error("[getApplicationById] ❌ not found");
     return null;
   }
 }
@@ -129,38 +172,34 @@ export async function updateUser(
   documentId: string,
   updates: Record<string, any>,
 ) {
+  console.log("[updateUser] documentId:", documentId, "updates:", updates);
   return db().updateDocument(DB_ID, USERS_COLLECTION, documentId, updates);
-}
-
-export async function setRoles(documentId: string, roles: UserRole[]) {
-  if (!roles.includes("user")) roles.push("user");
-  return updateUser(documentId, { roles: [...new Set(roles)] });
-}
-
-export async function setStatus(documentId: string, status: UserStatus) {
-  return updateUser(documentId, { status });
-}
-
-export async function deleteUser(documentId: string) {
-  return db().deleteDocument(DB_ID, USERS_COLLECTION, documentId);
 }
 
 /* =========================
    APPROVE AGENT USER
 ========================= */
 export async function approveAgent(userDocumentId: string) {
+  console.log("[approveAgent] userDocumentId:", userDocumentId);
+
   const user = await getUserById(userDocumentId);
-  if (!user) throw new Error("User not found");
+  if (!user) {
+    console.error("[approveAgent] ❌ user not found");
+    throw new Error("User not found");
+  }
 
   const roles: UserRole[] = Array.from(
     new Set([...(user.roles ?? []), "agent", "user"]),
   );
 
-  return updateUser(userDocumentId, {
+  const result = await updateUser(userDocumentId, {
     roles,
     status: "Active",
     approvedAt: new Date().toISOString(),
   });
+
+  console.log("[approveAgent] ✅ approved");
+  return result;
 }
 
 /* =========================
@@ -171,11 +210,25 @@ export async function approveApplication(
   adminId: string,
   reviewNotes?: string,
 ) {
+  console.log("[approveApplication] START", {
+    applicationId,
+    adminId,
+    reviewNotes,
+  });
+
   const application = await getApplicationById(applicationId);
-  if (!application) throw new Error("Application not found");
+  if (!application) {
+    console.error("[approveApplication] ❌ application not found");
+    throw new Error("Application not found");
+  }
+
+  console.log("[approveApplication] application.userId:", application.userId);
 
   const userDoc = await getUserByAccountId(application.userId);
-  if (!userDoc) throw new Error("User document not found");
+  if (!userDoc) {
+    console.error("[approveApplication] ❌ user document not found");
+    throw new Error("User document not found");
+  }
 
   await approveAgent(userDoc.$id);
 
@@ -193,12 +246,14 @@ export async function approveApplication(
     },
   );
 
+  console.log("[approveApplication] application marked verified");
+
   await db().createDocument(
     DB_ID,
     NOTIFICATIONS_COLLECTION,
     ID.unique(),
     {
-      accountId: application.userId,
+      accountid: application.userId, // ✅ match schema
       type: "agent_approved",
       message: "Your agent application has been approved.",
       createdAt: now,
@@ -212,6 +267,7 @@ export async function approveApplication(
     ],
   );
 
+  console.log("[approveApplication] ✅ SUCCESS");
   return { success: true };
 }
 
@@ -223,6 +279,12 @@ export async function rejectApplication(
   adminId: string,
   reviewNotes?: string,
 ) {
+  console.log("[rejectApplication]", {
+    applicationId,
+    adminId,
+    reviewNotes,
+  });
+
   const application = await getApplicationById(applicationId);
   if (!application) throw new Error("Application not found");
 
@@ -238,79 +300,6 @@ export async function rejectApplication(
     },
   );
 
+  console.log("[rejectApplication] ✅ rejected");
   return { success: true };
-}
-
-/* =========================
-   LIST USERS / AGENTS
-========================= */
-export async function listAgents() {
-  const res = await db().listDocuments(DB_ID, USERS_COLLECTION, [
-    Query.contains("roles", "agent"),
-  ]);
-  return res.documents;
-}
-
-export async function listUsers(limit = 100) {
-  const res = await db().listDocuments(DB_ID, USERS_COLLECTION, [
-    Query.limit(limit),
-  ]);
-  return res.documents;
-}
-
-/* =========================
-   USER CREDITS
-========================= */
-export async function getCredits(documentId: string): Promise<number> {
-  const user = await getUserById(documentId);
-  if (!user) throw new Error("User not found");
-
-  return typeof user.credits === "number" ? user.credits : 0;
-}
-
-export async function addCredits(
-  documentId: string,
-  amount: number,
-  reason = "manual",
-) {
-  if (amount <= 0) throw new Error("Amount must be positive");
-
-  const user = await getUserById(documentId);
-  if (!user) throw new Error("User not found");
-
-  const current = typeof user.credits === "number" ? user.credits : 0;
-
-  return updateUser(documentId, {
-    credits: current + amount,
-    lastCreditAction: {
-      type: "add",
-      amount,
-      reason,
-      at: new Date().toISOString(),
-    },
-  });
-}
-
-export async function deductCredits(
-  documentId: string,
-  amount: number,
-  reason = "usage",
-) {
-  if (amount <= 0) throw new Error("Amount must be positive");
-
-  const user = await getUserById(documentId);
-  if (!user) throw new Error("User not found");
-
-  const current = typeof user.credits === "number" ? user.credits : 0;
-  if (current < amount) throw new Error("Insufficient credits");
-
-  return updateUser(documentId, {
-    credits: current - amount,
-    lastCreditAction: {
-      type: "deduct",
-      amount,
-      reason,
-      at: new Date().toISOString(),
-    },
-  });
 }
