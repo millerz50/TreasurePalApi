@@ -183,7 +183,6 @@ export async function submitAgentApplication(payload: {
       message: payload.message,
       rating: payload.rating ?? null,
       verified: payload.verified ?? false,
-      createdAt: new Date().toISOString(),
     },
     [
       Permission.read(Role.team("admin")),
