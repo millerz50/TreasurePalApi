@@ -8,8 +8,16 @@ const AGENT_APPLICATIONS_COLLECTION = "agent_profiles";
 const NOTIFICATIONS_COLLECTION = "notifications";
 const CREDITS_COLLECTION = "credits";
 
-type UserRole = "user" | "agent" | "admin";
-type UserStatus = "Not Verified" | "Pending" | "Active" | "Suspended";
+/* =========================
+   TYPES
+========================= */
+export type UserRole = "user" | "agent" | "admin";
+export type UserStatus = "Not Verified" | "Pending" | "Active" | "Suspended";
+
+export interface CreditDocument extends Partial<Models.Document> {
+  accountid: string;
+  balance: number;
+}
 
 /* =========================
    DB HELPER
@@ -19,40 +27,20 @@ function db() {
 }
 
 /* =========================
-   TYPES
-========================= */
-interface CreditDocument extends Partial<Models.Document> {
-  accountid: string;
-  balance: number;
-}
-
-/* =========================
-   CREATE USER
+   USERS
 ========================= */
 export async function createUserRow(payload: Record<string, any>) {
   if (!payload.accountid) throw new Error("accountid is required");
 
-  const doc = await db().createDocument(
-    DB_ID,
-    USERS_COLLECTION,
-    ID.unique(),
-    payload,
-    [
-      Permission.read(Role.user(payload.accountid)),
-      Permission.update(Role.user(payload.accountid)),
-      Permission.read(Role.team("admin")),
-      Permission.update(Role.team("admin")),
-      Permission.delete(Role.team("admin")),
-    ],
-  );
-
-  console.log("[createUserRow] ✅ Created user:", doc.$id);
-  return doc;
+  return db().createDocument(DB_ID, USERS_COLLECTION, ID.unique(), payload, [
+    Permission.read(Role.user(payload.accountid)),
+    Permission.update(Role.user(payload.accountid)),
+    Permission.read(Role.team("admin")),
+    Permission.update(Role.team("admin")),
+    Permission.delete(Role.team("admin")),
+  ]);
 }
 
-/* =========================
-   GET USERS
-========================= */
 export async function listUsers() {
   const res = await db().listDocuments(DB_ID, USERS_COLLECTION);
   return res.documents;
@@ -65,11 +53,12 @@ export async function listAgents() {
   return res.documents;
 }
 
-export async function getUserByAccountId(accountId: string) {
+export async function getUserByAccountId(accountid: string) {
   const res = await db().listDocuments(DB_ID, USERS_COLLECTION, [
-    Query.equal("accountid", accountId),
+    Query.equal("accountid", accountid),
     Query.limit(1),
   ]);
+
   return res.total ? res.documents[0] : null;
 }
 
@@ -81,22 +70,38 @@ export async function getUserById(documentId: string) {
   }
 }
 
+/**
+ * ✅ REQUIRED by adminService.ts
+ */
+export async function findByEmail(email: string) {
+  const res = await db().listDocuments(DB_ID, USERS_COLLECTION, [
+    Query.equal("email", email),
+    Query.limit(1),
+  ]);
+
+  return res.total ? res.documents[0] : null;
+}
+
 /* =========================
-   DELETE USER
+   UPDATE / DELETE
 ========================= */
 export async function deleteUser(documentId: string) {
   return db().deleteDocument(DB_ID, USERS_COLLECTION, documentId);
 }
 
-/* =========================
-   UPDATE USER
-========================= */
 export async function setRoles(documentId: string, roles: UserRole[]) {
   return db().updateDocument(DB_ID, USERS_COLLECTION, documentId, { roles });
 }
 
 export async function setStatus(documentId: string, status: UserStatus) {
   return db().updateDocument(DB_ID, USERS_COLLECTION, documentId, { status });
+}
+
+export async function updateUser(
+  documentId: string,
+  updates: Record<string, any>,
+) {
+  return db().updateDocument(DB_ID, USERS_COLLECTION, documentId, updates);
 }
 
 /* =========================
@@ -109,26 +114,19 @@ export async function getCredits(accountid: string): Promise<CreditDocument> {
   ]);
 
   if (res.total) {
-    const doc = res.documents[0];
+    const doc = res.documents[0] as any;
     return {
-      ...doc,
-      accountid: (doc as any).accountid,
-      balance: (doc as any).balance,
-    } as CreditDocument;
+      $id: doc.$id,
+      accountid: doc.accountid,
+      balance: doc.balance,
+    };
   }
 
-  // Default if not found
-  const now = new Date().toISOString();
+  // ✅ Virtual default (NO fake Appwrite fields)
   return {
-    $id: "",
-    $collectionId: CREDITS_COLLECTION,
-    $databaseId: DB_ID,
-    $permissions: [],
-    $createdAt: now,
-    $updatedAt: now,
     accountid,
     balance: 0,
-  } as CreditDocument;
+  };
 }
 
 export async function addCredits(accountid: string, amount: number) {
@@ -137,27 +135,25 @@ export async function addCredits(accountid: string, amount: number) {
   const credit = await getCredits(accountid);
 
   if (credit.$id) {
-    console.log(`[addCredits] Updating credits for ${accountid} (+${amount})`);
     return db().updateDocument(DB_ID, CREDITS_COLLECTION, credit.$id, {
-      balance: (credit.balance || 0) + amount,
-    });
-  } else {
-    console.log(`[addCredits] Creating credits for ${accountid} (${amount})`);
-    return db().createDocument(DB_ID, CREDITS_COLLECTION, ID.unique(), {
-      accountid,
-      balance: amount,
+      balance: credit.balance + amount,
     });
   }
+
+  return db().createDocument(DB_ID, CREDITS_COLLECTION, ID.unique(), {
+    accountid,
+    balance: amount,
+  });
 }
 
 export async function deductCredits(accountid: string, amount: number) {
   if (amount <= 0) throw new Error("Amount must be positive");
 
   const credit = await getCredits(accountid);
-  if ((credit.balance || 0) < amount) throw new Error("Insufficient balance");
-  if (!credit.$id) throw new Error("Credit record not found");
 
-  console.log(`[deductCredits] Deducting ${amount} from ${accountid}`);
+  if (!credit.$id) throw new Error("Credit record not found");
+  if (credit.balance < amount) throw new Error("Insufficient balance");
+
   return db().updateDocument(DB_ID, CREDITS_COLLECTION, credit.$id, {
     balance: credit.balance - amount,
   });
@@ -202,6 +198,7 @@ export async function listPendingApplications(limit = 50) {
     Query.equal("verified", false),
     Query.limit(limit),
   ]);
+
   return res.documents;
 }
 
@@ -218,15 +215,8 @@ export async function getApplicationById(applicationId: string) {
 }
 
 /* =========================
-   USER UPDATES / APPROVAL
+   APPROVAL FLOW
 ========================= */
-export async function updateUser(
-  documentId: string,
-  updates: Record<string, any>,
-) {
-  return db().updateDocument(DB_ID, USERS_COLLECTION, documentId, updates);
-}
-
 export async function approveAgent(userDocumentId: string) {
   const user = await getUserById(userDocumentId);
   if (!user) throw new Error("User not found");
