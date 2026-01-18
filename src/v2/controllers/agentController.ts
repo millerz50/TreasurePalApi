@@ -18,42 +18,55 @@ import {
 export async function submitApplicationHandler(
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) {
   try {
     const body = req.body ?? {};
 
-    if (!body.accountid || typeof body.accountid !== "string") {
-      return res
-        .status(400)
-        .json({ success: false, message: "accountid is required" });
+    if (!body.accountId || typeof body.accountId !== "string") {
+      return res.status(400).json({
+        success: false,
+        message: "accountId is required",
+      });
     }
 
     if (!body.fullname || typeof body.fullname !== "string") {
-      return res
-        .status(400)
-        .json({ success: false, message: "fullname is required" });
+      return res.status(400).json({
+        success: false,
+        message: "fullname is required",
+      });
     }
 
     if (!body.message || typeof body.message !== "string") {
-      return res
-        .status(400)
-        .json({ success: false, message: "message is required" });
+      return res.status(400).json({
+        success: false,
+        message: "message is required",
+      });
     }
 
-    // All new applications start as unverified
+    // 🔐 Ensure user exists (optional but recommended)
+    const user = await getUserByAccountId(body.accountId).catch(() => null);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User account not found",
+      });
+    }
+
     const payload = {
-      accountid: body.accountid,
+      userId: body.accountId, // ✅ Appwrite Auth User ID
       fullname: body.fullname,
       message: body.message,
-      agentId: body.agentId ?? null,
       rating: body.rating ?? null,
-      verified: false, // ✅ default to false
+      verified: false, // ✅ always false on submit
     };
 
     const created = await submitAgentApplication(payload);
 
-    return res.status(201).json({ success: true, data: created });
+    return res.status(201).json({
+      success: true,
+      data: created,
+    });
   } catch (err) {
     return next(err);
   }
@@ -61,20 +74,22 @@ export async function submitApplicationHandler(
 
 /* =========================
    LIST PENDING APPLICATIONS (ADMIN)
-   Pending = verified === false
+   verified === false
 ========================= */
 export async function listPendingHandler(
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) {
   try {
     const limit = Number(req.query.limit ?? 50);
 
-    // fetch applications with verified === false
     const applications = await listPendingApplications(limit);
 
-    return res.status(200).json({ success: true, data: applications });
+    return res.status(200).json({
+      success: true,
+      data: applications,
+    });
   } catch (err) {
     return next(err);
   }
@@ -86,33 +101,46 @@ export async function listPendingHandler(
 export async function approveApplicationHandler(
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) {
   try {
     const applicationId = req.params.id;
+
     if (!applicationId) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Application id is required" });
+      return res.status(400).json({
+        success: false,
+        message: "Application id is required",
+      });
     }
 
     const application = await getApplicationById(applicationId);
     if (!application) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Application not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Application not found",
+      });
     }
 
-    const adminId = req.accountId!;
+    const adminId = req.accountId;
+    if (!adminId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
     const reviewNotes = req.body?.reviewNotes ?? null;
 
     const result = await approveApplication(
-      applicationId,
+      applicationId, // ✅ agent_profiles.$id
       adminId,
-      reviewNotes
+      reviewNotes,
     );
 
-    return res.status(200).json({ success: true, data: result });
+    return res.status(200).json({
+      success: true,
+      data: result,
+    });
   } catch (err) {
     return next(err);
   }
@@ -124,29 +152,42 @@ export async function approveApplicationHandler(
 export async function rejectApplicationHandler(
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) {
   try {
     const applicationId = req.params.id;
+
     if (!applicationId) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Application id is required" });
+      return res.status(400).json({
+        success: false,
+        message: "Application id is required",
+      });
     }
 
     const application = await getApplicationById(applicationId);
     if (!application) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Application not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Application not found",
+      });
     }
 
-    const adminId = req.accountId!;
+    const adminId = req.accountId;
+    if (!adminId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
     const reviewNotes = req.body?.reviewNotes ?? null;
 
     const result = await rejectApplication(applicationId, adminId, reviewNotes);
 
-    return res.status(200).json({ success: true, data: result });
+    return res.status(200).json({
+      success: true,
+      data: result,
+    });
   } catch (err) {
     return next(err);
   }
@@ -158,17 +199,24 @@ export async function rejectApplicationHandler(
 export async function getMetricsHandler(
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) {
   try {
-    const accountId = req.accountId!;
+    const accountId = req.accountId;
+
     if (!accountId) {
-      return res.status(401).json({ success: false, message: "Unauthorized" });
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
     }
 
     const userDoc = await getUserByAccountId(accountId).catch(() => null);
     if (!userDoc) {
-      console.warn("Metrics requested for non-existing user:", accountId);
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
     }
 
     const metrics = await getAgentDashboardMetrics(accountId);

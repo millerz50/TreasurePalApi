@@ -17,12 +17,12 @@ function db() {
    CREATE USER
 ========================= */
 export async function createUserRow(payload: Record<string, any>) {
-  const accountid = payload.accountid;
-  if (!accountid) throw new Error("accountid is required");
+  const accountId = payload.accountId;
+  if (!accountId) throw new Error("accountId is required");
 
   return db().createDocument(DB_ID, USERS_COLLECTION, ID.unique(), payload, [
-    Permission.read(Role.user(accountid)),
-    Permission.update(Role.user(accountid)),
+    Permission.read(Role.user(accountId)),
+    Permission.update(Role.user(accountId)),
     Permission.read(Role.team("admin")),
     Permission.update(Role.team("admin")),
     Permission.delete(Role.team("admin")),
@@ -30,46 +30,43 @@ export async function createUserRow(payload: Record<string, any>) {
 }
 
 /* =========================
-   AGENT APPLICATIONS
+   SUBMIT AGENT APPLICATION
 ========================= */
 export async function submitAgentApplication(payload: {
-  accountid: string;
+  userId: string; // Appwrite Auth User ID
   fullname: string;
   message: string;
   rating?: number | null;
-  verified?: boolean | null;
+  verified?: boolean;
 }) {
-  if (!payload.accountid) throw new Error("accountid is required");
+  if (!payload.userId) throw new Error("userId is required");
   if (!payload.fullname) throw new Error("fullname is required");
   if (!payload.message) throw new Error("message is required");
 
-  const doc = {
-    accountid: payload.accountid,
-    fullname: payload.fullname,
-    message: payload.message,
-    rating: payload.rating ?? null,
-    verified: payload.verified ?? false,
-    createdAt: new Date().toISOString(),
-    $createdAt: new Date().toISOString(),
-    $updatedAt: new Date().toISOString(),
-  };
+  const now = new Date().toISOString();
 
   return db().createDocument(
     DB_ID,
     AGENT_APPLICATIONS_COLLECTION,
     ID.unique(),
-    doc,
+    {
+      userId: payload.userId,
+      fullname: payload.fullname,
+      message: payload.message,
+      rating: payload.rating ?? null,
+      verified: payload.verified ?? false,
+      createdAt: now,
+    },
     [
       Permission.read(Role.team("admin")),
       Permission.update(Role.team("admin")),
       Permission.delete(Role.team("admin")),
-    ]
+    ],
   );
 }
 
 /* =========================
    LIST PENDING APPLICATIONS
-   Pending = verified === false
 ========================= */
 export async function listPendingApplications(limit = 50) {
   const res = await db().listDocuments(DB_ID, AGENT_APPLICATIONS_COLLECTION, [
@@ -80,11 +77,11 @@ export async function listPendingApplications(limit = 50) {
 }
 
 /* =========================
-   READ USERS / AGENTS
+   USERS
 ========================= */
-export async function getUserByAccountId(accountid: string) {
+export async function getUserByAccountId(accountId: string) {
   const res = await db().listDocuments(DB_ID, USERS_COLLECTION, [
-    Query.equal("accountid", accountid),
+    Query.equal("accountId", accountId),
     Query.limit(1),
   ]);
   return res.total ? res.documents[0] : null;
@@ -98,32 +95,27 @@ export async function getUserById(documentId: string) {
   }
 }
 
+/* =========================
+   APPLICATIONS
+========================= */
 export async function getApplicationById(applicationId: string) {
   try {
     return await db().getDocument(
       DB_ID,
       AGENT_APPLICATIONS_COLLECTION,
-      applicationId
+      applicationId,
     );
   } catch {
     return null;
   }
 }
 
-export async function findByEmail(email: string) {
-  const res = await db().listDocuments(DB_ID, USERS_COLLECTION, [
-    Query.equal("email", email.toLowerCase()),
-    Query.limit(1),
-  ]);
-  return res.total ? res.documents[0] : null;
-}
-
 /* =========================
-   UPDATE USERS
+   USER UPDATES
 ========================= */
 export async function updateUser(
   documentId: string,
-  updates: Record<string, any>
+  updates: Record<string, any>,
 ) {
   return db().updateDocument(DB_ID, USERS_COLLECTION, documentId, updates);
 }
@@ -142,16 +134,17 @@ export async function deleteUser(documentId: string) {
 }
 
 /* =========================
-   APPROVE / REJECT AGENT USERS
+   APPROVE AGENT USER
 ========================= */
-export async function approveAgent(documentId: string) {
-  const user = await getUserById(documentId);
+export async function approveAgent(userDocumentId: string) {
+  const user = await getUserById(userDocumentId);
   if (!user) throw new Error("User not found");
 
-  const roles = [
-    ...new Set<UserRole>(["user", ...(user.roles ?? []), "agent"]),
-  ];
-  return updateUser(documentId, {
+  const roles: UserRole[] = Array.from(
+    new Set([...(user.roles ?? []), "agent", "user"]),
+  );
+
+  return updateUser(userDocumentId, {
     roles,
     status: "Active",
     approvedAt: new Date().toISOString(),
@@ -159,22 +152,23 @@ export async function approveAgent(documentId: string) {
 }
 
 /* =========================
-   APPROVE / REJECT APPLICATIONS
+   APPROVE APPLICATION
 ========================= */
 export async function approveApplication(
   applicationId: string,
   adminId: string,
-  reviewNotes?: string
+  reviewNotes?: string,
 ) {
   const application = await getApplicationById(applicationId);
   if (!application) throw new Error("Application not found");
 
-  const userDoc = await getUserByAccountId(application.accountid);
+  const userDoc = await getUserByAccountId(application.userId);
   if (!userDoc) throw new Error("User document not found");
 
   await approveAgent(userDoc.$id);
 
   const now = new Date().toISOString();
+
   await db().updateDocument(
     DB_ID,
     AGENT_APPLICATIONS_COLLECTION,
@@ -184,7 +178,7 @@ export async function approveApplication(
       reviewedBy: adminId,
       reviewedAt: now,
       reviewNotes: reviewNotes ?? null,
-    }
+    },
   );
 
   await db().createDocument(
@@ -192,32 +186,34 @@ export async function approveApplication(
     NOTIFICATIONS_COLLECTION,
     ID.unique(),
     {
-      accountid: application.accountid,
+      accountId: application.userId,
       type: "agent_approved",
       message: "Your agent application has been approved.",
       createdAt: now,
       read: false,
     },
     [
-      Permission.read(Role.user(application.accountid)),
-      Permission.update(Role.user(application.accountid)),
+      Permission.read(Role.user(application.userId)),
+      Permission.update(Role.user(application.userId)),
       Permission.read(Role.team("admin")),
       Permission.delete(Role.team("admin")),
-    ]
+    ],
   );
 
   return { success: true };
 }
 
+/* =========================
+   REJECT APPLICATION
+========================= */
 export async function rejectApplication(
   applicationId: string,
   adminId: string,
-  reviewNotes?: string
+  reviewNotes?: string,
 ) {
   const application = await getApplicationById(applicationId);
   if (!application) throw new Error("Application not found");
 
-  const now = new Date().toISOString();
   await db().updateDocument(
     DB_ID,
     AGENT_APPLICATIONS_COLLECTION,
@@ -225,9 +221,9 @@ export async function rejectApplication(
     {
       verified: false,
       reviewedBy: adminId,
-      reviewedAt: now,
+      reviewedAt: new Date().toISOString(),
       reviewNotes: reviewNotes ?? null,
-    }
+    },
   );
 
   return { success: true };
@@ -256,13 +252,14 @@ export async function listUsers(limit = 100) {
 export async function getCredits(documentId: string): Promise<number> {
   const user = await getUserById(documentId);
   if (!user) throw new Error("User not found");
+
   return typeof user.credits === "number" ? user.credits : 0;
 }
 
 export async function addCredits(
   documentId: string,
   amount: number,
-  reason = "manual"
+  reason = "manual",
 ) {
   if (amount <= 0) throw new Error("Amount must be positive");
 
@@ -285,7 +282,7 @@ export async function addCredits(
 export async function deductCredits(
   documentId: string,
   amount: number,
-  reason = "usage"
+  reason = "usage",
 ) {
   if (amount <= 0) throw new Error("Amount must be positive");
 
