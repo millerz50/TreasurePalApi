@@ -6,6 +6,8 @@ import {
   rejectApplicationHandler,
   submitApplicationHandler,
 } from "../controllers/agentController";
+
+import { getAgents } from "../controllers/userController";
 import { verifyToken, verifyTokenAndAdmin } from "../middleware/verifyToken";
 
 const router = express.Router();
@@ -23,18 +25,19 @@ router.get("/applications/pending", verifyTokenAndAdmin, listPendingHandler);
 router.post(
   "/applications/:id/approve",
   verifyTokenAndAdmin,
-  approveApplicationHandler
+  approveApplicationHandler,
 );
 
 router.post(
   "/applications/:id/reject",
   verifyTokenAndAdmin,
-  rejectApplicationHandler
+  rejectApplicationHandler,
 );
 
 /**
  * Agent / User metrics
  */
 router.get("/metrics", verifyToken, getMetricsHandler);
+router.get("/agents", getAgents);
 
 export default router;
