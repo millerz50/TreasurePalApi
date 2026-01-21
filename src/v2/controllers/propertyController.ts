@@ -2,7 +2,7 @@
 import { Request, Response } from "express";
 import * as service from "../services/property/propertyService";
 
-/** -------------------- Helpers -------------------- */
+/* -------------------- Helpers -------------------- */
 
 /** Extract Multer files into a usable object */
 function extractImages(files: any) {
@@ -29,37 +29,42 @@ function getErrorMessage(err: unknown): string {
   }
 }
 
-/** -------------------- Public Endpoints -------------------- */
+/* -------------------- Public Endpoints -------------------- */
 
-/** List all properties */
-export async function listProperties(_req: Request, res: Response) {
-  console.log("📋 [listProperties] start");
+/** List properties, optionally filtered by type */
+export async function listHandler(req: Request, res: Response) {
+  const { type } = req.params; // get the property type from URL
+  console.log("📋 [listHandler] type:", type);
+
   try {
-    const properties = await service.listProperties();
+    const properties = await service.listProperties(type); // ✅ fixed reference
     console.log(
-      "✅ [listProperties] fetched",
+      "✅ [listHandler] fetched",
       Array.isArray(properties) ? properties.length : "unknown",
-      "properties"
+      "properties",
     );
     return res.json(properties);
   } catch (err: unknown) {
-    console.error("❌ [listProperties] error:", getErrorMessage(err));
+    console.error("❌ [listHandler] error:", getErrorMessage(err));
     return res.status(500).json({ error: getErrorMessage(err) });
   }
 }
 
 /** Get property by ID */
 export async function getPropertyById(req: Request, res: Response) {
-  console.log("🔎 [getPropertyById] id:", req.params.id);
+  const { id } = req.params;
+  console.log("🔎 [getPropertyById] id:", id);
+
   try {
-    const property = await service.getPropertyById(req.params.id);
+    const property = await service.getPropertyById(id);
     if (!property) {
-      console.warn("⚠️ [getPropertyById] not found:", req.params.id);
+      console.warn("⚠️ [getPropertyById] not found:", id);
       return res.status(404).json({ error: "Property not found" });
     }
+
     console.log(
       "✅ [getPropertyById] found:",
-      (property as any)?.$id ?? "(formatted)"
+      (property as any)?.$id ?? "(formatted)",
     );
     return res.json(property);
   } catch (err: unknown) {
@@ -68,15 +73,15 @@ export async function getPropertyById(req: Request, res: Response) {
   }
 }
 
-/** -------------------- Protected Endpoints -------------------- */
+/* -------------------- Protected Endpoints -------------------- */
 
 /** Create a new property (agent only) */
 export async function createProperty(req: Request, res: Response) {
   console.log("➕ [createProperty] incoming request");
+
   try {
     const user = (req as any).authUser;
-    console.log("   authUser:", JSON.stringify(user, null, 2));
-    console.log("   accountId:", (req as any).accountId);
+    const accountId = (req as any).accountId ?? user?.id;
 
     if (!user || !Array.isArray(user.roles) || !user.roles.includes("agent")) {
       console.warn("⛔ [createProperty] access denied. roles:", user?.roles);
@@ -85,7 +90,6 @@ export async function createProperty(req: Request, res: Response) {
         .json({ error: "Only agents can create properties" });
     }
 
-    const accountId = (req as any).accountId ?? user.id;
     if (!accountId) {
       console.error("❌ [createProperty] missing accountId on request");
       return res
@@ -96,7 +100,7 @@ export async function createProperty(req: Request, res: Response) {
     const images = extractImages(req.files);
     console.log(
       "   extracted images keys:",
-      images ? Object.keys(images) : "none"
+      images ? Object.keys(images) : "none",
     );
 
     const payloadSummary = {
@@ -109,20 +113,19 @@ export async function createProperty(req: Request, res: Response) {
 
     const property = await service.createProperty(req.body, accountId, images);
 
-    // Log created property info
     console.log(
       "✅ [createProperty] created property id:",
-      (property as any)?.$id ?? "(no id)"
+      (property as any)?.$id ?? "(no id)",
     );
     if ((property as any)?.$permissions) {
       console.log(
         "   $permissions:",
-        JSON.stringify((property as any).$permissions)
+        JSON.stringify((property as any).$permissions),
       );
     } else if ((property as any)?.images) {
       console.log(
         "   images keys in returned property:",
-        Object.keys((property as any).images || {})
+        Object.keys((property as any).images || {}),
       );
     }
 
@@ -130,44 +133,43 @@ export async function createProperty(req: Request, res: Response) {
   } catch (err: unknown) {
     console.error("❌ [createProperty] error:", getErrorMessage(err));
     const msg = getErrorMessage(err);
-    if (/agent|forbidden|unauthorized/i.test(msg))
+    if (/agent|forbidden|unauthorized/i.test(msg)) {
       return res.status(403).json({ error: msg });
+    }
     return res.status(400).json({ error: msg || "Bad request" });
   }
 }
 
 /** Update an existing property (owner or admin) */
 export async function updateProperty(req: Request, res: Response) {
-  console.log("✏️ [updateProperty] id:", req.params.id);
+  const { id } = req.params;
+  console.log("✏️ [updateProperty] id:", id);
+
   try {
     const user = (req as any).authUser;
-    console.log("   authUser:", JSON.stringify(user, null, 2));
-    console.log("   accountId:", (req as any).accountId);
-
     if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    const accountId = (req as any).accountId ?? user.id;
+    const isAdmin = Array.isArray(user.roles) && user.roles.includes("admin");
 
     const images = extractImages(req.files);
     console.log(
       "   extracted images keys:",
-      images ? Object.keys(images) : "none"
+      images ? Object.keys(images) : "none",
     );
-
-    const isAdmin = Array.isArray(user.roles) && user.roles.includes("admin");
     console.log("   isAdmin:", isAdmin);
 
-    const accountId = (req as any).accountId ?? user.id;
-
     const property = await service.updateProperty(
-      req.params.id,
+      id,
       req.body,
       accountId,
       isAdmin,
-      images
+      images,
     );
 
     console.log(
       "✅ [updateProperty] updated:",
-      (property as any)?.$id ?? "(formatted)"
+      (property as any)?.$id ?? "(formatted)",
     );
     return res.json(property);
   } catch (err: unknown) {
@@ -178,7 +180,9 @@ export async function updateProperty(req: Request, res: Response) {
 
 /** Delete a property (owner or admin) */
 export async function deleteProperty(req: Request, res: Response) {
-  console.log("🗑 [deleteProperty] id:", req.params.id);
+  const { id } = req.params;
+  console.log("🗑 [deleteProperty] id:", id);
+
   try {
     const user = (req as any).authUser;
     if (!user) return res.status(401).json({ error: "Unauthorized" });
@@ -186,9 +190,9 @@ export async function deleteProperty(req: Request, res: Response) {
     const accountId = (req as any).accountId ?? user.id;
     const isAdmin = Array.isArray(user.roles) && user.roles.includes("admin");
 
-    await service.deleteProperty(req.params.id, accountId, isAdmin);
+    await service.deleteProperty(id, accountId, isAdmin);
 
-    console.log("✅ [deleteProperty] deleted:", req.params.id);
+    console.log("✅ [deleteProperty] deleted:", id);
     return res.status(204).send();
   } catch (err: unknown) {
     console.error("❌ [deleteProperty] error:", getErrorMessage(err));
@@ -198,11 +202,12 @@ export async function deleteProperty(req: Request, res: Response) {
 
 /** Approve/publish property (admin only) */
 export async function approveProperty(req: Request, res: Response) {
-  console.log("✅ [approveProperty] id:", req.params.id);
+  const { id } = req.params;
+  console.log("✅ [approveProperty] id:", id);
+
   try {
     const admin = (req as any).authUser;
-    console.log("   authUser:", JSON.stringify(admin, null, 2));
-    console.log("   accountId:", (req as any).accountId);
+    const accountId = (req as any).accountId ?? admin?.id;
 
     if (
       !admin ||
@@ -215,20 +220,15 @@ export async function approveProperty(req: Request, res: Response) {
 
     const updates = {
       published: true,
-      approvedBy: (req as any).accountId ?? admin.id,
+      approvedBy: accountId,
       approvedAt: new Date().toISOString(),
     };
 
-    const property = await service.updateProperty(
-      req.params.id,
-      updates,
-      (req as any).accountId ?? admin.id,
-      true
-    );
+    const property = await service.updateProperty(id, updates, accountId, true);
 
     console.log(
       "✅ [approveProperty] published:",
-      (property as any)?.$id ?? "(formatted)"
+      (property as any)?.$id ?? "(formatted)",
     );
     return res.json(property);
   } catch (err: unknown) {

@@ -6,7 +6,7 @@ import {
   createProperty as createHandler,
   deleteProperty as deleteHandler,
   getPropertyById as getHandler,
-  listProperties as listHandler,
+  listHandler,
   updateProperty as updateHandler,
 } from "../controllers/propertyController";
 import { verifyToken, verifyTokenAndAdmin } from "../middleware/verifyToken";
@@ -26,15 +26,19 @@ const upload = multer({ storage }).fields([
 ]);
 
 // -------------------- Public routes --------------------
+// List all properties
 router.get("/all", listHandler);
-router.get("/:id", getHandler);
+
+// List properties by type ✅ Must come BEFORE /:id
 router.get("/type/:type", listHandler);
+
+// Get property by ID
+router.get("/:id", getHandler);
 
 // -------------------- Protected: create (agent) --------------------
 router.post("/add", verifyToken, upload, createHandler);
 
 // -------------------- Protected: update (owner agent or admin) --------------------
-// ✅ Reuse the same upload config so update accepts the same fields
 router.put("/:id", verifyToken, upload, updateHandler);
 
 // -------------------- Protected: delete (owner agent or admin) --------------------

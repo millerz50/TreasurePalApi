@@ -1,5 +1,5 @@
 // server/services/property/propertyService.ts
-import { ID } from "node-appwrite";
+import { ID, Query } from "node-appwrite";
 import { uploadToAppwriteBucket } from "../../lib/uploadToAppwrite";
 import { supabase } from "../../superbase/supabase";
 import { databases, DB_ID, PROPERTIES_COLLECTION, storage } from "./client";
@@ -21,7 +21,7 @@ function getErrorMessage(err: unknown): string {
  * Returns: { frontElevation: fileId, southView: fileId, ... }
  */
 async function uploadPropertyImages(
-  imageFiles?: Record<string, { buffer: Buffer; name: string }>
+  imageFiles?: Record<string, { buffer: Buffer; name: string }>,
 ): Promise<Record<string, string | null>> {
   const images: Record<string, string | null> = {};
 
@@ -36,7 +36,7 @@ async function uploadPropertyImages(
       const { fileId } = await uploadToAppwriteBucket(buffer, name);
       images[key] = fileId;
     } catch (err) {
-      console.error(`Failed to upload ${key}:`, getErrorMessage(err));
+      console.error(`❌ Failed to upload ${key}:`, getErrorMessage(err));
       images[key] = null;
     }
   }
@@ -45,7 +45,7 @@ async function uploadPropertyImages(
 }
 
 /**
- * Normalize raw Appwrite doc → wrap image IDs into `images` object
+ * Normalize raw Appwrite doc → wrap image IDs into images object
  */
 function formatProperty(doc: any) {
   const images: Record<string, string | null> = {};
@@ -61,12 +61,21 @@ function formatProperty(doc: any) {
 
 /* ------------------------------- CRUD ----------------------------------- */
 
-export async function listProperties(limit = 100) {
+/**
+ * List properties, optionally filtered by type
+ */
+export async function listProperties(type?: string, limit = 100) {
+  const queries = [];
+
+  if (type) {
+    queries.push(Query.equal("type", type)); // filter by type if provided
+  }
+
   const res = await databases.listDocuments(
     DB_ID,
     PROPERTIES_COLLECTION,
-    [],
-    String(limit)
+    queries,
+    String(limit),
   );
 
   const formatted = await Promise.all(
@@ -81,17 +90,20 @@ export async function listProperties(limit = 100) {
         ...doc,
         amenities: amenitiesRes?.amenities || [],
       });
-    })
+    }),
   );
 
   return formatted;
 }
 
+/**
+ * Get property by ID
+ */
 export async function getPropertyById(id: string) {
   const property = await databases.getDocument(
     DB_ID,
     PROPERTIES_COLLECTION,
-    id
+    id,
   );
 
   const { data: amenitiesRes } = await supabase
@@ -106,11 +118,13 @@ export async function getPropertyById(id: string) {
   });
 }
 
-/** Create property (agent only) */
+/**
+ * Create property (agent only)
+ */
 export async function createProperty(
   payload: any,
   accountId: string,
-  imageFiles?: Record<string, { buffer: Buffer; name: string }>
+  imageFiles?: Record<string, { buffer: Buffer; name: string }>,
 ) {
   await validateAgent(accountId);
 
@@ -141,7 +155,7 @@ export async function createProperty(
       url: payload.url ?? `/properties/${ID.unique()}`,
       ...images, // store only fileIds at top level
     },
-    buildPropertyPermissions(accountId)
+    buildPropertyPermissions(accountId),
   );
 
   // Store amenities in Supabase
@@ -156,18 +170,20 @@ export async function createProperty(
   return formatProperty({ ...propertyDoc, amenities: amenitiesArray });
 }
 
-/** Update property */
+/**
+ * Update property
+ */
 export async function updateProperty(
   id: string,
   updates: any,
   accountId: string,
   isAdmin = false,
-  imageFiles?: Record<string, { buffer: Buffer; name: string }>
+  imageFiles?: Record<string, { buffer: Buffer; name: string }>,
 ) {
   const existing = await databases.getDocument(
     DB_ID,
     PROPERTIES_COLLECTION,
-    id
+    id,
   );
 
   if (!isAdmin && existing.agentId !== accountId) {
@@ -220,16 +236,18 @@ export async function updateProperty(
   return formatProperty({ ...doc, amenities: updates.amenities });
 }
 
-/** Delete property */
+/**
+ * Delete property
+ */
 export async function deleteProperty(
   id: string,
   accountId: string,
-  isAdmin = false
+  isAdmin = false,
 ) {
   const property = await databases.getDocument(
     DB_ID,
     PROPERTIES_COLLECTION,
-    id
+    id,
   );
 
   if (!isAdmin && property.agentId !== accountId) {
