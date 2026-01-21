@@ -38,6 +38,6 @@ router.post(
  * Agent / User metrics
  */
 router.get("/metrics", verifyToken, getMetricsHandler);
-router.get("/agents", getAgents);
+router.get("/all", getAgents);
 
 export default router;
