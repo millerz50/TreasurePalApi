@@ -9,6 +9,7 @@ import { IMAGE_KEYS, parseCoordinates } from "./utils";
 
 /* ------------------------------- helpers --------------------------------- */
 
+/** Safely extract error messages */
 function getErrorMessage(err: unknown): string {
   if (!err) return "Unknown error";
   if (typeof err === "string") return err;
@@ -17,7 +18,7 @@ function getErrorMessage(err: unknown): string {
 }
 
 /**
- * Upload images → Storage
+ * Upload property images to Appwrite storage
  * Returns: { frontElevation: fileId, southView: fileId, ... }
  */
 async function uploadPropertyImages(
@@ -44,9 +45,7 @@ async function uploadPropertyImages(
   return images;
 }
 
-/**
- * Normalize raw Appwrite doc → wrap image IDs into images object
- */
+/** Format raw property doc → wrap image IDs under `images` */
 function formatProperty(doc: any) {
   const images: Record<string, string | null> = {};
   for (const key of IMAGE_KEYS) {
@@ -61,14 +60,12 @@ function formatProperty(doc: any) {
 
 /* ------------------------------- CRUD ----------------------------------- */
 
-/**
- * List properties, optionally filtered by type
- */
+/** List properties, optionally filtered by type */
 export async function listProperties(type?: string, limit = 100) {
   const queries = [];
 
   if (type) {
-    queries.push(Query.equal("type", type)); // filter by type if provided
+    queries.push(Query.equal("type", type));
   }
 
   const res = await databases.listDocuments(
@@ -96,9 +93,7 @@ export async function listProperties(type?: string, limit = 100) {
   return formatted;
 }
 
-/**
- * Get property by ID
- */
+/** Get property by ID */
 export async function getPropertyById(id: string) {
   const property = await databases.getDocument(
     DB_ID,
@@ -118,9 +113,7 @@ export async function getPropertyById(id: string) {
   });
 }
 
-/**
- * Create property (agent only)
- */
+/** Create property (agent only) */
 export async function createProperty(
   payload: any,
   accountId: string,
@@ -130,7 +123,7 @@ export async function createProperty(
 
   const coords = parseCoordinates(payload.coordinates);
 
-  // Upload images and get fileIds
+  // Upload images
   const images = await uploadPropertyImages(imageFiles);
 
   const propertyDoc = await databases.createDocument(
@@ -153,7 +146,7 @@ export async function createProperty(
       approvedBy: null,
       approvedAt: null,
       url: payload.url ?? `/properties/${ID.unique()}`,
-      ...images, // store only fileIds at top level
+      ...images, // store file IDs at top level
     },
     buildPropertyPermissions(accountId),
   );
@@ -170,9 +163,7 @@ export async function createProperty(
   return formatProperty({ ...propertyDoc, amenities: amenitiesArray });
 }
 
-/**
- * Update property
- */
+/** Update property */
 export async function updateProperty(
   id: string,
   updates: any,
@@ -236,9 +227,7 @@ export async function updateProperty(
   return formatProperty({ ...doc, amenities: updates.amenities });
 }
 
-/**
- * Delete property
- */
+/** Delete property */
 export async function deleteProperty(
   id: string,
   accountId: string,
@@ -256,13 +245,13 @@ export async function deleteProperty(
 
   // Delete images from Appwrite storage
   for (const key of IMAGE_KEYS) {
-    if (property[key]) {
-      const fileId = property[key]; // fileId is stored directly
-      if (fileId)
-        await storage.deleteFile(process.env.APPWRITE_BUCKET_ID!, fileId);
+    const fileId = property[key];
+    if (fileId) {
+      await storage.deleteFile(process.env.APPWRITE_BUCKET_ID!, fileId);
     }
   }
 
+  // Delete property document
   await databases.deleteDocument(DB_ID, PROPERTIES_COLLECTION, id);
 
   // Delete amenities from Supabase

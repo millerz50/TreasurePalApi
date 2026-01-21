@@ -5,7 +5,7 @@ import * as service from "../services/property/propertyService";
 /* -------------------- Helpers -------------------- */
 
 /** Extract Multer files into a usable object */
-function extractImages(files: any) {
+function extractImages(files: Express.Multer.File[] | any) {
   if (!files) return undefined;
   const images: Record<string, { buffer: Buffer; name: string }> = {};
   for (const key of Object.keys(files)) {
@@ -33,11 +33,11 @@ function getErrorMessage(err: unknown): string {
 
 /** List properties, optionally filtered by type */
 export async function listHandler(req: Request, res: Response) {
-  const { type } = req.params; // get the property type from URL
+  const { type } = req.params;
   console.log("📋 [listHandler] type:", type);
 
   try {
-    const properties = await service.listProperties(type); // ✅ fixed reference
+    const properties = await service.listProperties(type);
     console.log(
       "✅ [listHandler] fetched",
       Array.isArray(properties) ? properties.length : "unknown",
