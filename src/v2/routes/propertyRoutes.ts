@@ -1,4 +1,3 @@
-// server/routes/propertyRoutes.ts
 import { Router } from "express";
 import multer from "multer";
 import {
@@ -12,11 +11,7 @@ import {
 import { verifyToken, verifyTokenAndAdmin } from "../middleware/verifyToken";
 
 const router = Router();
-
-// ✅ Use memoryStorage for file buffers
 const storage = multer.memoryStorage();
-
-// ✅ Configure Multer with all expected image fields
 const upload = multer({ storage }).fields([
   { name: "frontElevation", maxCount: 1 },
   { name: "southView", maxCount: 1 },
@@ -26,6 +21,7 @@ const upload = multer({ storage }).fields([
 ]);
 
 // -------------------- Public routes --------------------
+
 // List all properties
 router.get("/all", listHandler);
 

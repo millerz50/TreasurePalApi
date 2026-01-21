@@ -1,4 +1,3 @@
-// server/controllers/propertyController.ts
 import { Request, Response } from "express";
 import * as service from "../services/property/propertyService";
 
@@ -31,9 +30,9 @@ function getErrorMessage(err: unknown): string {
 
 /* -------------------- Public Endpoints -------------------- */
 
-/** List properties, optionally filtered by type */
+/** List all properties or by type */
 export async function listHandler(req: Request, res: Response) {
-  const { type } = req.params;
+  const type = (req.params as any).type; // undefined if not filtering
   console.log("📋 [listHandler] type:", type);
 
   try {
@@ -117,17 +116,6 @@ export async function createProperty(req: Request, res: Response) {
       "✅ [createProperty] created property id:",
       (property as any)?.$id ?? "(no id)",
     );
-    if ((property as any)?.$permissions) {
-      console.log(
-        "   $permissions:",
-        JSON.stringify((property as any).$permissions),
-      );
-    } else if ((property as any)?.images) {
-      console.log(
-        "   images keys in returned property:",
-        Object.keys((property as any).images || {}),
-      );
-    }
 
     return res.status(201).json(property);
   } catch (err: unknown) {
