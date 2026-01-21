@@ -28,6 +28,7 @@ const upload = multer({ storage }).fields([
 // -------------------- Public routes --------------------
 router.get("/all", listHandler);
 router.get("/:id", getHandler);
+router.get("/type/:type", listHandler);
 
 // -------------------- Protected: create (agent) --------------------
 router.post("/add", verifyToken, upload, createHandler);
