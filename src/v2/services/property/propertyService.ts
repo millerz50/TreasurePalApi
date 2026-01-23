@@ -9,7 +9,6 @@ import { IMAGE_KEYS, parseCoordinates } from "./utils";
 
 /* ------------------------------- helpers --------------------------------- */
 
-/** Safely extract error messages */
 function getErrorMessage(err: unknown): string {
   if (!err) return "Unknown error";
   if (typeof err === "string") return err;
@@ -17,10 +16,6 @@ function getErrorMessage(err: unknown): string {
   return JSON.stringify(err);
 }
 
-/**
- * Upload property images to Appwrite storage
- * Returns: { frontElevation: fileId, southView: fileId, ... }
- */
 async function uploadPropertyImages(
   imageFiles?: Record<string, { buffer: Buffer; name: string }>,
 ): Promise<Record<string, string | null>> {
@@ -32,8 +27,8 @@ async function uploadPropertyImages(
       continue;
     }
 
-    const { buffer, name } = imageFiles[key];
     try {
+      const { buffer, name } = imageFiles[key];
       const { fileId } = await uploadToAppwriteBucket(buffer, name);
       images[key] = fileId;
     } catch (err) {
@@ -45,7 +40,6 @@ async function uploadPropertyImages(
   return images;
 }
 
-/** Format raw property doc → wrap image IDs under `images` */
 function formatProperty(doc: any) {
   const images: Record<string, string | null> = {};
   for (const key of IMAGE_KEYS) {
@@ -58,11 +52,11 @@ function formatProperty(doc: any) {
   };
 }
 
-/* ------------------------------- CRUD ----------------------------------- */
+/* ------------------------------- READ ----------------------------------- */
 
-/** List properties, optionally filtered by type */
+/** List ALL properties (optionally filtered by type) */
 export async function listProperties(type?: string, limit = 100) {
-  const queries = [];
+  const queries: any[] = [];
 
   if (type) {
     queries.push(Query.equal("type", type));
@@ -75,9 +69,9 @@ export async function listProperties(type?: string, limit = 100) {
     String(limit),
   );
 
-  const formatted = await Promise.all(
+  return Promise.all(
     res.documents.map(async (doc) => {
-      const { data: amenitiesRes } = await supabase
+      const { data } = await supabase
         .from("property_amenities")
         .select("amenities")
         .eq("property_id", doc.$id)
@@ -85,12 +79,35 @@ export async function listProperties(type?: string, limit = 100) {
 
       return formatProperty({
         ...doc,
-        amenities: amenitiesRes?.amenities || [],
+        amenities: data?.amenities || [],
       });
     }),
   );
+}
 
-  return formatted;
+/** ✅ List properties by STATUS (pending, approved, rejected) */
+export async function listByStatus(status: string, limit = 100) {
+  const res = await databases.listDocuments(
+    DB_ID,
+    PROPERTIES_COLLECTION,
+    [Query.equal("status", status)],
+    String(limit),
+  );
+
+  return Promise.all(
+    res.documents.map(async (doc) => {
+      const { data } = await supabase
+        .from("property_amenities")
+        .select("amenities")
+        .eq("property_id", doc.$id)
+        .single();
+
+      return formatProperty({
+        ...doc,
+        amenities: data?.amenities || [],
+      });
+    }),
+  );
 }
 
 /** Get property by ID */
@@ -101,7 +118,7 @@ export async function getPropertyById(id: string) {
     id,
   );
 
-  const { data: amenitiesRes } = await supabase
+  const { data } = await supabase
     .from("property_amenities")
     .select("amenities")
     .eq("property_id", id)
@@ -109,11 +126,12 @@ export async function getPropertyById(id: string) {
 
   return formatProperty({
     ...property,
-    amenities: amenitiesRes?.amenities || [],
+    amenities: data?.amenities || [],
   });
 }
 
-/** Create property (agent only) */
+/* ------------------------------- CREATE --------------------------------- */
+
 export async function createProperty(
   payload: any,
   accountId: string,
@@ -122,48 +140,45 @@ export async function createProperty(
   await validateAgent(accountId);
 
   const coords = parseCoordinates(payload.coordinates);
-
-  // Upload images
   const images = await uploadPropertyImages(imageFiles);
 
-  const propertyDoc = await databases.createDocument(
+  const doc = await databases.createDocument(
     DB_ID,
     PROPERTIES_COLLECTION,
     ID.unique(),
     {
       title: payload.title ?? "",
-      price: payload.price ? Number(payload.price) : 0,
+      price: Number(payload.price ?? 0),
       location: payload.location ?? "",
       address: payload.address ?? "",
-      rooms: payload.rooms ? Number(payload.rooms) : 0,
+      rooms: Number(payload.rooms ?? 0),
       description: payload.description ?? "",
       type: payload.type ?? "",
       status: "pending",
       country: payload.country ?? "",
-      ...coords,
       agentId: accountId,
       published: false,
       approvedBy: null,
       approvedAt: null,
       url: payload.url ?? `/properties/${ID.unique()}`,
-      ...images, // store file IDs at top level
+      ...coords,
+      ...images,
     },
     buildPropertyPermissions(accountId),
   );
 
-  // Store amenities in Supabase
-  const amenitiesArray = Array.isArray(payload.amenities)
-    ? payload.amenities
-    : [];
+  const amenities = Array.isArray(payload.amenities) ? payload.amenities : [];
+
   await supabase.from("property_amenities").insert({
-    property_id: propertyDoc.$id,
-    amenities: amenitiesArray,
+    property_id: doc.$id,
+    amenities,
   });
 
-  return formatProperty({ ...propertyDoc, amenities: amenitiesArray });
+  return formatProperty({ ...doc, amenities });
 }
 
-/** Update property */
+/* ------------------------------- UPDATE --------------------------------- */
+
 export async function updateProperty(
   id: string,
   updates: any,
@@ -182,52 +197,44 @@ export async function updateProperty(
   }
 
   const coords = parseCoordinates(updates.coordinates);
-
-  // Upload new images if provided
-  let images: Record<string, string | null> = {};
-  if (imageFiles) {
-    images = await uploadPropertyImages(imageFiles);
-  }
+  const images = imageFiles ? await uploadPropertyImages(imageFiles) : {};
 
   const doc = await databases.updateDocument(DB_ID, PROPERTIES_COLLECTION, id, {
-    ...(updates.title !== undefined && { title: updates.title }),
-    ...(updates.price !== undefined && { price: Number(updates.price) }),
-    ...(updates.location !== undefined && { location: updates.location }),
-    ...(updates.address !== undefined && { address: updates.address }),
-    ...(updates.rooms !== undefined && { rooms: Number(updates.rooms) }),
-    ...(updates.description !== undefined && {
-      description: updates.description,
-    }),
-    ...(updates.type !== undefined && { type: updates.type }),
-    ...(updates.status !== undefined && { status: updates.status }),
-    ...(updates.country !== undefined && { country: updates.country }),
+    ...(updates.title && { title: updates.title }),
+    ...(updates.price && { price: Number(updates.price) }),
+    ...(updates.location && { location: updates.location }),
+    ...(updates.address && { address: updates.address }),
+    ...(updates.rooms && { rooms: Number(updates.rooms) }),
+    ...(updates.description && { description: updates.description }),
+    ...(updates.type && { type: updates.type }),
+    ...(updates.status && { status: updates.status }),
+    ...(updates.country && { country: updates.country }),
     ...coords,
     ...images,
   });
 
-  // Update amenities in Supabase
+  let amenities: string[] = [];
+
   if (updates.amenities) {
-    const amenitiesArray = Array.isArray(updates.amenities)
-      ? updates.amenities
-      : [];
+    amenities = Array.isArray(updates.amenities) ? updates.amenities : [];
     await supabase.from("property_amenities").upsert({
       property_id: id,
-      amenities: amenitiesArray,
+      amenities,
     });
-    updates.amenities = amenitiesArray;
   } else {
-    const { data: amenitiesRes } = await supabase
+    const { data } = await supabase
       .from("property_amenities")
       .select("amenities")
       .eq("property_id", id)
       .single();
-    updates.amenities = amenitiesRes?.amenities || [];
+    amenities = data?.amenities || [];
   }
 
-  return formatProperty({ ...doc, amenities: updates.amenities });
+  return formatProperty({ ...doc, amenities });
 }
 
-/** Delete property */
+/* ------------------------------- DELETE --------------------------------- */
+
 export async function deleteProperty(
   id: string,
   accountId: string,
@@ -243,7 +250,6 @@ export async function deleteProperty(
     throw new Error("Not authorized");
   }
 
-  // Delete images from Appwrite storage
   for (const key of IMAGE_KEYS) {
     const fileId = property[key];
     if (fileId) {
@@ -251,9 +257,6 @@ export async function deleteProperty(
     }
   }
 
-  // Delete property document
   await databases.deleteDocument(DB_ID, PROPERTIES_COLLECTION, id);
-
-  // Delete amenities from Supabase
   await supabase.from("property_amenities").delete().eq("property_id", id);
 }
