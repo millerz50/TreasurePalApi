@@ -39,6 +39,8 @@ router.put("/:id", verifyToken, upload, updateHandler);
 
 // -------------------- Protected: delete (owner agent or admin) --------------------
 router.delete("/:id", verifyToken, deleteHandler);
+// ✅ List properties by status (pending, approved, etc)
+router.get("/status/:status", listHandler);
 
 // -------------------- Admin: approve/publish property --------------------
 router.post("/approve/:id", verifyTokenAndAdmin, approveHandler);
