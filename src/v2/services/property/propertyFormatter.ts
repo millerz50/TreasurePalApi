@@ -15,6 +15,9 @@ export function formatProperty(row: any) {
 
   console.log("📝 [formatProperty] Formatting row:", row?.$id);
 
+  // Ensure status is valid: "forRent" or "forSale"
+  const validStatus = row.status === "forSale" ? "forSale" : "forRent";
+
   // Base property fields
   const base = {
     $id: row.$id,
@@ -25,7 +28,8 @@ export function formatProperty(row: any) {
     rooms: typeof row.rooms === "number" ? row.rooms : Number(row.rooms || 0),
     description: row.description || "",
     type: row.type || "",
-    status: row.status || "pending",
+    subType: row.subType || "", // ✅ include subType
+    status: validStatus, // ✅ ensure only "forRent" or "forSale"
     country: row.country || "",
     amenities: Array.isArray(row.amenities)
       ? row.amenities
@@ -72,7 +76,7 @@ export function formatProperty(row: any) {
     const previewUrl = getPreviewUrl(fileId);
     images[key] = { fileId, previewUrl };
     console.log(
-      `🖼 [formatProperty] Image key=${key} fileId=${fileId} previewUrl=${previewUrl}`
+      `🖼 [formatProperty] Image key=${key} fileId=${fileId} previewUrl=${previewUrl}`,
     );
   });
 

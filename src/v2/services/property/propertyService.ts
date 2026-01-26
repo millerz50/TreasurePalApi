@@ -16,8 +16,13 @@ function getErrorMessage(err: unknown): string {
   return JSON.stringify(err);
 }
 
+type ImageUpload = {
+  buffer: Buffer;
+  name: string;
+};
+
 async function uploadPropertyImages(
-  imageFiles?: Record<string, { buffer: Buffer; name: string }>,
+  imageFiles?: Record<string, ImageUpload>,
 ): Promise<Record<string, string | null>> {
   const images: Record<string, string | null> = {};
 
@@ -40,8 +45,9 @@ async function uploadPropertyImages(
   return images;
 }
 
-function formatProperty(doc: any) {
+function formatProperty(doc: Record<string, any>) {
   const images: Record<string, string | null> = {};
+
   for (const key of IMAGE_KEYS) {
     images[key] = doc[key] ?? null;
   }
@@ -54,7 +60,6 @@ function formatProperty(doc: any) {
 
 /* ------------------------------- READ ----------------------------------- */
 
-/** List ALL properties (optionally filtered by type) */
 export async function listProperties(type?: string, limit = 100) {
   const queries: any[] = [];
 
@@ -79,13 +84,12 @@ export async function listProperties(type?: string, limit = 100) {
 
       return formatProperty({
         ...doc,
-        amenities: data?.amenities || [],
+        amenities: data?.amenities ?? [],
       });
     }),
   );
 }
 
-/** ✅ List properties by STATUS (pending, approved, rejected) */
 export async function listByStatus(status: string, limit = 100) {
   const res = await databases.listDocuments(
     DB_ID,
@@ -104,13 +108,12 @@ export async function listByStatus(status: string, limit = 100) {
 
       return formatProperty({
         ...doc,
-        amenities: data?.amenities || [],
+        amenities: data?.amenities ?? [],
       });
     }),
   );
 }
 
-/** Get property by ID */
 export async function getPropertyById(id: string) {
   const property = await databases.getDocument(
     DB_ID,
@@ -126,26 +129,31 @@ export async function getPropertyById(id: string) {
 
   return formatProperty({
     ...property,
-    amenities: data?.amenities || [],
+    amenities: data?.amenities ?? [],
   });
 }
 
 /* ------------------------------- CREATE --------------------------------- */
 
 export async function createProperty(
-  payload: any,
+  payload: Record<string, any>,
   accountId: string,
-  imageFiles?: Record<string, { buffer: Buffer; name: string }>,
+  imageFiles?: Record<string, ImageUpload>,
 ) {
   await validateAgent(accountId);
 
   const coords = parseCoordinates(payload.coordinates);
   const images = await uploadPropertyImages(imageFiles);
+  const propertyId = ID.unique();
+
+  // Ensure status is either "forRent" or "forSale"
+  const propertyStatus =
+    payload.property_status === "forSale" ? "forSale" : "forRent";
 
   const doc = await databases.createDocument(
     DB_ID,
     PROPERTIES_COLLECTION,
-    ID.unique(),
+    propertyId,
     {
       title: payload.title ?? "",
       price: Number(payload.price ?? 0),
@@ -154,13 +162,14 @@ export async function createProperty(
       rooms: Number(payload.rooms ?? 0),
       description: payload.description ?? "",
       type: payload.type ?? "",
-      status: "pending",
+      subType: payload.subType ?? "", // ✅ include subType
+      status: propertyStatus,
       country: payload.country ?? "",
       agentId: accountId,
       published: false,
       approvedBy: null,
       approvedAt: null,
-      url: payload.url ?? `/properties/${ID.unique()}`,
+      url: payload.url ?? `/properties/${propertyId}`,
       ...coords,
       ...images,
     },
@@ -181,10 +190,10 @@ export async function createProperty(
 
 export async function updateProperty(
   id: string,
-  updates: any,
+  updates: Record<string, any>,
   accountId: string,
   isAdmin = false,
-  imageFiles?: Record<string, { buffer: Buffer; name: string }>,
+  imageFiles?: Record<string, ImageUpload>,
 ) {
   const existing = await databases.getDocument(
     DB_ID,
@@ -199,23 +208,32 @@ export async function updateProperty(
   const coords = parseCoordinates(updates.coordinates);
   const images = imageFiles ? await uploadPropertyImages(imageFiles) : {};
 
+  // Ensure status is valid if being updated
+  const statusUpdate =
+    updates.status === "forSale" || updates.status === "forRent"
+      ? updates.status
+      : undefined;
+
   const doc = await databases.updateDocument(DB_ID, PROPERTIES_COLLECTION, id, {
-    ...(updates.title && { title: updates.title }),
-    ...(updates.price && { price: Number(updates.price) }),
-    ...(updates.location && { location: updates.location }),
-    ...(updates.address && { address: updates.address }),
-    ...(updates.rooms && { rooms: Number(updates.rooms) }),
-    ...(updates.description && { description: updates.description }),
-    ...(updates.type && { type: updates.type }),
-    ...(updates.status && { status: updates.status }),
-    ...(updates.country && { country: updates.country }),
+    ...(updates.title !== undefined && { title: updates.title }),
+    ...(updates.price !== undefined && { price: Number(updates.price) }),
+    ...(updates.location !== undefined && { location: updates.location }),
+    ...(updates.address !== undefined && { address: updates.address }),
+    ...(updates.rooms !== undefined && { rooms: Number(updates.rooms) }),
+    ...(updates.description !== undefined && {
+      description: updates.description,
+    }),
+    ...(updates.type !== undefined && { type: updates.type }),
+    ...(updates.subType !== undefined && { subType: updates.subType }), // ✅ update subType
+    ...(statusUpdate !== undefined && { status: statusUpdate }),
+    ...(updates.country !== undefined && { country: updates.country }),
     ...coords,
     ...images,
   });
 
   let amenities: string[] = [];
 
-  if (updates.amenities) {
+  if (updates.amenities !== undefined) {
     amenities = Array.isArray(updates.amenities) ? updates.amenities : [];
     await supabase.from("property_amenities").upsert({
       property_id: id,
@@ -227,7 +245,7 @@ export async function updateProperty(
       .select("amenities")
       .eq("property_id", id)
       .single();
-    amenities = data?.amenities || [];
+    amenities = data?.amenities ?? [];
   }
 
   return formatProperty({ ...doc, amenities });
