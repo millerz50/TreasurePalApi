@@ -6,7 +6,6 @@ const DB_ID = getEnv("APPWRITE_DATABASE_ID")!;
 const USERS_COLLECTION = "users";
 const AGENT_APPLICATIONS_COLLECTION = "agent_profiles";
 const NOTIFICATIONS_COLLECTION = "notifications";
-const CREDITS_COLLECTION = "credits";
 
 /* =========================
    TYPES
@@ -14,7 +13,7 @@ const CREDITS_COLLECTION = "credits";
 export type UserRole = "user" | "agent" | "admin";
 export type UserStatus = "Not Verified" | "Pending" | "Active" | "Suspended";
 
-export interface CreditDocument extends Partial<Models.Document> {
+export interface CreditDocument {
   accountid: string;
   balance: number;
 }
@@ -70,9 +69,6 @@ export async function getUserById(documentId: string) {
   }
 }
 
-/**
- * ✅ REQUIRED by adminService.ts
- */
 export async function findByEmail(email: string) {
   const res = await db().listDocuments(DB_ID, USERS_COLLECTION, [
     Query.equal("email", email),
@@ -105,58 +101,44 @@ export async function updateUser(
 }
 
 /* =========================
-   CREDITS
+   CREDITS (in users collection)
 ========================= */
 export async function getCredits(accountid: string): Promise<CreditDocument> {
-  const res = await db().listDocuments(DB_ID, CREDITS_COLLECTION, [
-    Query.equal("accountid", accountid),
-    Query.limit(1),
-  ]);
+  const user = await getUserByAccountId(accountid);
+  if (!user) throw new Error("User not found");
 
-  if (res.total) {
-    const doc = res.documents[0] as any;
-    return {
-      $id: doc.$id,
-      accountid: doc.accountid,
-      balance: doc.balance,
-    };
-  }
-
-  // ✅ Virtual default (NO fake Appwrite fields)
   return {
     accountid,
-    balance: 0,
+    balance: user.credits || 0,
   };
 }
 
 export async function addCredits(accountid: string, amount: number) {
   if (amount <= 0) throw new Error("Amount must be positive");
 
-  const credit = await getCredits(accountid);
+  const user = await getUserByAccountId(accountid);
+  if (!user) throw new Error("User not found");
 
-  if (credit.$id) {
-    return db().updateDocument(DB_ID, CREDITS_COLLECTION, credit.$id, {
-      balance: credit.balance + amount,
-    });
-  }
+  const newBalance = (user.credits || 0) + amount;
 
-  return db().createDocument(DB_ID, CREDITS_COLLECTION, ID.unique(), {
-    accountid,
-    balance: amount,
-  });
+  await updateUser(user.$id, { credits: newBalance });
+
+  return { accountid, balance: newBalance };
 }
 
 export async function deductCredits(accountid: string, amount: number) {
   if (amount <= 0) throw new Error("Amount must be positive");
 
-  const credit = await getCredits(accountid);
+  const user = await getUserByAccountId(accountid);
+  if (!user) throw new Error("User not found");
 
-  if (!credit.$id) throw new Error("Credit record not found");
-  if (credit.balance < amount) throw new Error("Insufficient balance");
+  if ((user.credits || 0) < amount) throw new Error("Insufficient credits");
 
-  return db().updateDocument(DB_ID, CREDITS_COLLECTION, credit.$id, {
-    balance: credit.balance - amount,
-  });
+  const newBalance = (user.credits || 0) - amount;
+
+  await updateUser(user.$id, { credits: newBalance });
+
+  return { accountid, balance: newBalance };
 }
 
 /* =========================
@@ -223,7 +205,6 @@ export async function approveAgent(userDocumentId: string) {
     new Set([...(user.roles ?? []), "agent", "user"]),
   );
 
-  // ✅ Only update fields that exist in your Appwrite users collection
   return updateUser(userDocumentId, {
     roles,
     status: "Active",
