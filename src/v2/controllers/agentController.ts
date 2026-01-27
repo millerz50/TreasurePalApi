@@ -1,8 +1,5 @@
 import { NextFunction, Request, Response } from "express";
-import {
-  getAgentDashboardMetrics,
-  recordAgentMetrics,
-} from "../services/dashboard/dashboardService";
+import dashboardService from "../services/dashboard/dashboardService"; // ✅ default import
 import {
   approveApplication,
   getApplicationById,
@@ -11,6 +8,9 @@ import {
   rejectApplication,
   submitAgentApplication,
 } from "../services/user/userService";
+
+// Destructure dashboardService methods for convenience
+const { getAgentDashboardMetrics, recordAgentMetrics } = dashboardService;
 
 /* =========================
    SUBMIT AGENT APPLICATION
@@ -44,7 +44,7 @@ export async function submitApplicationHandler(
       });
     }
 
-    // 🔐 Ensure user exists (optional but recommended)
+    // 🔐 Ensure user exists
     const user = await getUserByAccountId(body.accountId).catch(() => null);
     if (!user) {
       return res.status(404).json({
@@ -54,11 +54,11 @@ export async function submitApplicationHandler(
     }
 
     const payload = {
-      userId: body.accountId, // ✅ Appwrite Auth User ID
+      userId: body.accountId, // Appwrite Auth User ID
       fullname: body.fullname,
       message: body.message,
       rating: body.rating ?? null,
-      verified: false, // ✅ always false on submit
+      verified: false, // always false on submit
     };
 
     const created = await submitAgentApplication(payload);
@@ -74,7 +74,6 @@ export async function submitApplicationHandler(
 
 /* =========================
    LIST PENDING APPLICATIONS (ADMIN)
-   verified === false
 ========================= */
 export async function listPendingHandler(
   req: Request,
@@ -132,7 +131,7 @@ export async function approveApplicationHandler(
     const reviewNotes = req.body?.reviewNotes ?? null;
 
     const result = await approveApplication(
-      applicationId, // ✅ agent_profiles.$id
+      applicationId,
       adminId,
       reviewNotes,
     );

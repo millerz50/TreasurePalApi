@@ -1,9 +1,9 @@
 import { Request, Response } from "express";
-import {
-  getAgentDashboardMetrics,
-  getUserProfileByUserId,   // <-- change to query by $id
-  recordAgentMetrics,
-} from "../services/dashboard/dashboardService";
+import dashboardService from "../services/dashboard/dashboardService"; // default import
+
+// Destructure methods for convenience
+const { getUserProfileByUserId, getAgentDashboardMetrics, recordAgentMetrics } =
+  dashboardService;
 
 /**
  * GET /api/dashboard/agent/:id
@@ -11,12 +11,16 @@ import {
  */
 export async function getAgentMetricsController(req: Request, res: Response) {
   const userId = req.params.id; // treat this as $id
+
   try {
-    if (!userId) return res.status(400).json({ error: "userId required" });
+    if (!userId) {
+      return res.status(400).json({ error: "userId required" });
+    }
 
     // Enrich with profile data by $id
     const profile = await getUserProfileByUserId(userId).catch(() => null);
 
+    // Compute agent metrics
     const metrics = await getAgentDashboardMetrics(userId);
 
     return res.json({
@@ -31,16 +35,22 @@ export async function getAgentMetricsController(req: Request, res: Response) {
   }
 }
 
-
 /**
  * POST /api/dashboard/agent/:id/record
  * Accepts an optional metrics payload in the body; if none provided, computes metrics then persists.
  */
-export async function recordAgentMetricsController(req: Request, res: Response) {
+export async function recordAgentMetricsController(
+  req: Request,
+  res: Response,
+) {
   const userId = req.params.id; // treat this as $id
-  try {
-    if (!userId) return res.status(400).json({ error: "userId required" });
 
+  try {
+    if (!userId) {
+      return res.status(400).json({ error: "userId required" });
+    }
+
+    // If metrics provided in body, use them; otherwise compute
     const incomingMetrics = req.body?.metrics ?? null;
     const metricsToSave =
       incomingMetrics ?? (await getAgentDashboardMetrics(userId));
@@ -53,4 +63,3 @@ export async function recordAgentMetricsController(req: Request, res: Response) 
     return res.status(500).json({ error: "Failed to record agent metrics" });
   }
 }
-
