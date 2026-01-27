@@ -1,3 +1,4 @@
+// routes/userRoutes.ts
 import express from "express";
 import multer from "multer";
 import sdk, { Client, ID } from "node-appwrite";
@@ -129,7 +130,6 @@ router.patch("/:id/status", verifyTokenAndAdmin, setStatus);
    - Agents can GET and SPEND their own credits
    - Admins can ADD credits
 ====================================================== */
-
 // Agent or admin can view their own credits
 router.get("/:id/credits", verifyToken, getCreditsController);
 

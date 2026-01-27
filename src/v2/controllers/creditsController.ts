@@ -1,3 +1,4 @@
+// controllers/creditsController.ts
 import { Request, Response } from "express";
 import {
   addCredits,
@@ -11,7 +12,6 @@ import {
 export async function getCreditsController(req: Request, res: Response) {
   try {
     const accountid = req.params.id;
-
     if (!accountid) {
       return res.status(400).json({ error: "accountid is required" });
     }
@@ -49,11 +49,12 @@ export async function addCreditsController(req: Request, res: Response) {
         .json({ error: "Amount must be a positive number" });
     }
 
-    await addCredits(accountid, amount);
+    const newBalance = await addCredits(accountid, amount);
 
     return res.status(200).json({
       success: true,
       message: "Credits added successfully",
+      credits: newBalance,
     });
   } catch (err: any) {
     console.error("[addCreditsController] ❌", err);
@@ -82,11 +83,12 @@ export async function spendCreditsController(req: Request, res: Response) {
         .json({ error: "Amount must be a positive number" });
     }
 
-    await deductCredits(accountid, amount);
+    const newBalance = await deductCredits(accountid, amount);
 
     return res.status(200).json({
       success: true,
       message: "Credits deducted successfully",
+      credits: newBalance,
     });
   } catch (err: any) {
     console.error("[spendCreditsController] ❌", err);
