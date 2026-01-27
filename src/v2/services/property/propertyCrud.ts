@@ -9,7 +9,7 @@ import {
   databases,
   storage,
 } from "./client";
-import { formatProperty } from "./formatters";
+import { formatProperty } from "./propertyFormatter";
 import { IMAGE_KEYS, parseCoordinates } from "./utils";
 
 /** -------------------- CRUD -------------------- */
@@ -20,7 +20,7 @@ export async function listProperties(limit = 100) {
     DB_ID,
     PROPERTIES_COLLECTION,
     [],
-    String(limit)
+    String(limit),
   );
 
   const formatted = await Promise.all(
@@ -35,7 +35,7 @@ export async function listProperties(limit = 100) {
         ...doc,
         amenities: amenitiesRes?.amenities || [],
       });
-    })
+    }),
   );
 
   return formatted;
@@ -60,7 +60,7 @@ export async function getPropertyById(id: string) {
 /** Create a property (agent only) */
 export async function createProperty(
   payload: any,
-  imageFiles?: Record<string, { buffer: Buffer; name: string }>
+  imageFiles?: Record<string, { buffer: Buffer; name: string }>,
 ) {
   // ✅ Validate agent
   const agentRes = await databases.listDocuments(DB_ID, USERS_COLLECTION, [
@@ -80,13 +80,12 @@ export async function createProperty(
       if (imageFiles[key]) {
         const { fileId } = await uploadToAppwriteBucket(
           imageFiles[key].buffer,
-          imageFiles[key].name
+          imageFiles[key].name,
         );
 
         // Construct public URL for storage
-        imageUrls[
-          key
-        ] = `${process.env.APPWRITE_ENDPOINT}/storage/buckets/${process.env.APPWRITE_BUCKET_ID}/files/${fileId}/view`;
+        imageUrls[key] =
+          `${process.env.APPWRITE_ENDPOINT}/storage/buckets/${process.env.APPWRITE_BUCKET_ID}/files/${fileId}/view`;
       } else {
         imageUrls[key] = null;
       }
@@ -109,7 +108,7 @@ export async function createProperty(
     DB_ID,
     PROPERTIES_COLLECTION,
     ID.unique(),
-    record
+    record,
   );
 
   // Store amenities in Supabase
@@ -130,12 +129,12 @@ export async function updateProperty(
   updates: any,
   accountId: string,
   isAdmin = false,
-  imageFiles?: Record<string, { buffer: Buffer; name: string }>
+  imageFiles?: Record<string, { buffer: Buffer; name: string }>,
 ) {
   const existing = await databases.getDocument(
     DB_ID,
     PROPERTIES_COLLECTION,
-    id
+    id,
   );
 
   if (!isAdmin && existing.agentId !== accountId) {
@@ -157,11 +156,10 @@ export async function updateProperty(
 
         const { fileId } = await uploadToAppwriteBucket(
           imageFiles[key].buffer,
-          imageFiles[key].name
+          imageFiles[key].name,
         );
-        imageUrls[
-          key
-        ] = `${process.env.APPWRITE_ENDPOINT}/storage/buckets/${process.env.APPWRITE_BUCKET_ID}/files/${fileId}/view`;
+        imageUrls[key] =
+          `${process.env.APPWRITE_ENDPOINT}/storage/buckets/${process.env.APPWRITE_BUCKET_ID}/files/${fileId}/view`;
       }
     }
   }
@@ -176,7 +174,7 @@ export async function updateProperty(
     DB_ID,
     PROPERTIES_COLLECTION,
     id,
-    payload
+    payload,
   );
 
   // Update amenities in Supabase
@@ -204,12 +202,12 @@ export async function updateProperty(
 export async function deleteProperty(
   id: string,
   accountId: string,
-  isAdmin = false
+  isAdmin = false,
 ) {
   const existing = await databases.getDocument(
     DB_ID,
     PROPERTIES_COLLECTION,
-    id
+    id,
   );
 
   if (!isAdmin && existing.agentId !== accountId) {
