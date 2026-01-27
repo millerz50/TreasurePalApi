@@ -1,11 +1,16 @@
 // src/v2/services/user/userService.ts
-import { Databases, ID, Permission, Query, Role, Models } from "node-appwrite";
+import { Databases, ID, Permission, Query, Role } from "node-appwrite";
 import { getClient, getEnv } from "../../services/lib/env";
 
+/* =========================
+   ENV / CONSTANTS
+========================= */
 const DB_ID = getEnv("APPWRITE_DATABASE_ID")!;
 const USERS_COLLECTION = "users";
 const AGENT_APPLICATIONS_COLLECTION = "agent_profiles";
 const NOTIFICATIONS_COLLECTION = "notifications";
+const ACTIVITY_COLLECTION =
+  getEnv("APPWRITE_ACTIVITY_COLLECTION") ?? "activity";
 
 /* =========================
    TYPES
@@ -26,18 +31,62 @@ function db() {
 }
 
 /* =========================
+   ACTIVITY LOGGER (SAFE)
+========================= */
+async function logActivity(payload: {
+  actorId: string;
+  actorRole?: string;
+  action: string;
+  message: string;
+  amount?: number;
+  refId?: string;
+  refType?: string;
+}) {
+  try {
+    await db().createDocument(DB_ID, ACTIVITY_COLLECTION, ID.unique(), {
+      actorId: payload.actorId,
+      actorRole: payload.actorRole ?? "user",
+      action: payload.action,
+      message: payload.message,
+      amount: payload.amount ?? null,
+      refId: payload.refId ?? null,
+      refType: payload.refType ?? null,
+      createdAt: new Date().toISOString(),
+    });
+  } catch {
+    // activity must never break business logic
+  }
+}
+
+/* =========================
    USERS
 ========================= */
 export async function createUserRow(payload: Record<string, any>) {
   if (!payload.accountid) throw new Error("accountid is required");
 
-  return db().createDocument(DB_ID, USERS_COLLECTION, ID.unique(), payload, [
-    Permission.read(Role.user(payload.accountid)),
-    Permission.update(Role.user(payload.accountid)),
-    Permission.read(Role.team("admin")),
-    Permission.update(Role.team("admin")),
-    Permission.delete(Role.team("admin")),
-  ]);
+  const doc = await db().createDocument(
+    DB_ID,
+    USERS_COLLECTION,
+    ID.unique(),
+    payload,
+    [
+      Permission.read(Role.user(payload.accountid)),
+      Permission.update(Role.user(payload.accountid)),
+      Permission.read(Role.team("admin")),
+      Permission.update(Role.team("admin")),
+      Permission.delete(Role.team("admin")),
+    ],
+  );
+
+  await logActivity({
+    actorId: payload.accountid,
+    action: "user_created",
+    message: "User profile created",
+    refId: doc.$id,
+    refType: "user",
+  });
+
+  return doc;
 }
 
 export async function listUsers() {
@@ -57,7 +106,6 @@ export async function getUserByAccountId(accountid: string) {
     Query.equal("accountid", accountid),
     Query.limit(1),
   ]);
-
   return res.total ? res.documents[0] : null;
 }
 
@@ -74,7 +122,6 @@ export async function findByEmail(email: string) {
     Query.equal("email", email),
     Query.limit(1),
   ]);
-
   return res.total ? res.documents[0] : null;
 }
 
@@ -101,7 +148,7 @@ export async function updateUser(
 }
 
 /* =========================
-   CREDITS (in users collection)
+   CREDITS (USERS COLLECTION)
 ========================= */
 export async function getCredits(accountid: string): Promise<CreditDocument> {
   const user = await getUserByAccountId(accountid);
@@ -120,8 +167,16 @@ export async function addCredits(accountid: string, amount: number) {
   if (!user) throw new Error("User not found");
 
   const newBalance = (user.credits || 0) + amount;
-
   await updateUser(user.$id, { credits: newBalance });
+
+  await logActivity({
+    actorId: accountid,
+    action: "credits_added",
+    message: `Credits added (+${amount})`,
+    amount,
+    refId: user.$id,
+    refType: "user",
+  });
 
   return { accountid, balance: newBalance };
 }
@@ -132,11 +187,21 @@ export async function deductCredits(accountid: string, amount: number) {
   const user = await getUserByAccountId(accountid);
   if (!user) throw new Error("User not found");
 
-  if ((user.credits || 0) < amount) throw new Error("Insufficient credits");
+  if ((user.credits || 0) < amount) {
+    throw new Error("Insufficient credits");
+  }
 
   const newBalance = (user.credits || 0) - amount;
-
   await updateUser(user.$id, { credits: newBalance });
+
+  await logActivity({
+    actorId: accountid,
+    action: "credits_deducted",
+    message: `Credits deducted (-${amount})`,
+    amount: -amount,
+    refId: user.$id,
+    refType: "user",
+  });
 
   return { accountid, balance: newBalance };
 }
@@ -155,7 +220,7 @@ export async function submitAgentApplication(payload: {
     throw new Error("userId, fullname, and message are required");
   }
 
-  return db().createDocument(
+  const doc = await db().createDocument(
     DB_ID,
     AGENT_APPLICATIONS_COLLECTION,
     ID.unique(),
@@ -172,6 +237,16 @@ export async function submitAgentApplication(payload: {
       Permission.delete(Role.team("admin")),
     ],
   );
+
+  await logActivity({
+    actorId: payload.userId,
+    action: "agent_application_submitted",
+    message: "Agent application submitted",
+    refId: doc.$id,
+    refType: "agent_application",
+  });
+
+  return doc;
 }
 
 export async function listPendingApplications(limit = 50) {
@@ -205,9 +280,18 @@ export async function approveAgent(userDocumentId: string) {
     new Set([...(user.roles ?? []), "agent", "user"]),
   );
 
-  return updateUser(userDocumentId, {
+  await updateUser(userDocumentId, {
     roles,
     status: "Active",
+  });
+
+  await logActivity({
+    actorId: user.accountid,
+    actorRole: "admin",
+    action: "agent_approved",
+    message: "User promoted to agent",
+    refId: user.$id,
+    refType: "user",
   });
 }
 
@@ -237,6 +321,15 @@ export async function approveApplication(
       reviewNotes: reviewNotes ?? null,
     },
   );
+
+  await logActivity({
+    actorId: adminId,
+    actorRole: "admin",
+    action: "agent_application_approved",
+    message: "Agent application approved",
+    refId: applicationId,
+    refType: "agent_application",
+  });
 
   await db().createDocument(
     DB_ID,
@@ -279,6 +372,15 @@ export async function rejectApplication(
       reviewNotes: reviewNotes ?? null,
     },
   );
+
+  await logActivity({
+    actorId: adminId,
+    actorRole: "admin",
+    action: "agent_application_rejected",
+    message: "Agent application rejected",
+    refId: applicationId,
+    refType: "agent_application",
+  });
 
   return { success: true };
 }
