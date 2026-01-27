@@ -15,10 +15,23 @@ export function formatProperty(row: any) {
 
   console.log("📝 [formatProperty] Formatting row:", row?.$id);
 
-  // Ensure status is valid: "forRent" or "forSale"
-  const validStatus = row.status === "forSale" ? "forSale" : "forRent";
+  /* ----------------------------------
+     Normalize statuses
+  ----------------------------------- */
 
-  // Base property fields
+  // Market status: forRent | forSale (default → forRent)
+  const property_status =
+    row.property_status === "forSale" ? "forSale" : "forRent";
+
+  // Internal status: pending | verified | notVerified (default → pending)
+  const status =
+    row.status === "verified" || row.status === "notVerified"
+      ? row.status
+      : "pending";
+
+  /* ----------------------------------
+     Base property fields
+  ----------------------------------- */
   const base = {
     $id: row.$id,
     title: row.title || "",
@@ -27,13 +40,19 @@ export function formatProperty(row: any) {
     address: row.address || "",
     rooms: typeof row.rooms === "number" ? row.rooms : Number(row.rooms || 0),
     description: row.description || "",
+
     type: row.type || "",
-    subType: row.subType || "", // ✅ include subType
-    status: validStatus, // ✅ ensure only "forRent" or "forSale"
+    subType: row.subType || "",
+
+    // ✅ Correctly separated
+    property_status,
+    status,
+
     country: row.country || "",
     amenities: Array.isArray(row.amenities)
       ? row.amenities
       : fromCsv(row.amenities || ""),
+
     locationLat:
       row.locationLat !== undefined && row.locationLat !== null
         ? Number(row.locationLat)
@@ -42,16 +61,19 @@ export function formatProperty(row: any) {
       row.locationLng !== undefined && row.locationLng !== null
         ? Number(row.locationLng)
         : null,
+
     agentId: row.agentId || null,
     published: !!row.published,
     approvedBy: row.approvedBy || null,
     approvedAt: row.approvedAt || null,
+
     depositAvailable: !!row.depositAvailable,
     depositOption: row.depositOption || "none",
     depositPercentage:
       row.depositPercentage !== undefined && row.depositPercentage !== null
         ? Number(row.depositPercentage)
         : null,
+
     website: row.website || "",
     flyers: row.flyers || "",
     hireDesigner: !!row.hireDesigner,
@@ -59,13 +81,16 @@ export function formatProperty(row: any) {
     subscriptionPlan: row.subscriptionPlan || "free",
     whatsappGroup: row.whatsappGroup || "",
     ads: row.ads || "",
+
     createdAt: row.$createdAt || null,
     updatedAt: row.$updatedAt || null,
   };
 
   console.log("ℹ️ [formatProperty] Base property data:", base);
 
-  // Process images
+  /* ----------------------------------
+     Images
+  ----------------------------------- */
   const images: Record<
     string,
     { fileId: string | null; previewUrl: string | null }
@@ -75,6 +100,7 @@ export function formatProperty(row: any) {
     const fileId = row[key] || null;
     const previewUrl = getPreviewUrl(fileId);
     images[key] = { fileId, previewUrl };
+
     console.log(
       `🖼 [formatProperty] Image key=${key} fileId=${fileId} previewUrl=${previewUrl}`,
     );

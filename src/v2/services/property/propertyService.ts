@@ -146,9 +146,12 @@ export async function createProperty(
   const images = await uploadPropertyImages(imageFiles);
   const propertyId = ID.unique();
 
-  // Ensure status is either "forRent" or "forSale"
+  // ✅ property_status: forRent | forSale
   const propertyStatus =
     payload.property_status === "forSale" ? "forSale" : "forRent";
+
+  // ✅ status: pending | verified | not_verified
+  const status = "pending";
 
   const doc = await databases.createDocument(
     DB_ID,
@@ -162,8 +165,9 @@ export async function createProperty(
       rooms: Number(payload.rooms ?? 0),
       description: payload.description ?? "",
       type: payload.type ?? "",
-      subType: payload.subType ?? "", // ✅ include subType
-      status: propertyStatus,
+      subType: payload.subType ?? "",
+      property_status: propertyStatus,
+      status,
       country: payload.country ?? "",
       agentId: accountId,
       published: false,
@@ -208,9 +212,18 @@ export async function updateProperty(
   const coords = parseCoordinates(updates.coordinates);
   const images = imageFiles ? await uploadPropertyImages(imageFiles) : {};
 
-  // Ensure status is valid if being updated
+  // ✅ validate property_status
+  const propertyStatusUpdate =
+    updates.property_status === "forSale" ||
+    updates.property_status === "forRent"
+      ? updates.property_status
+      : undefined;
+
+  // ✅ validate status
   const statusUpdate =
-    updates.status === "forSale" || updates.status === "forRent"
+    updates.status === "pending" ||
+    updates.status === "verified" ||
+    updates.status === "not_verified"
       ? updates.status
       : undefined;
 
@@ -224,8 +237,9 @@ export async function updateProperty(
       description: updates.description,
     }),
     ...(updates.type !== undefined && { type: updates.type }),
-    ...(updates.subType !== undefined && { subType: updates.subType }), // ✅ update subType
-    ...(statusUpdate !== undefined && { status: statusUpdate }),
+    ...(updates.subType !== undefined && { subType: updates.subType }),
+    ...(propertyStatusUpdate && { property_status: propertyStatusUpdate }),
+    ...(statusUpdate && { status: statusUpdate }),
     ...(updates.country !== undefined && { country: updates.country }),
     ...coords,
     ...images,
