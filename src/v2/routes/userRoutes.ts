@@ -56,7 +56,7 @@ router.post("/upload", verifyToken, upload.single("file"), async (req, res) => {
     const uploaded = await storage.createFile(
       bucketId,
       ID.unique(),
-      req.file.buffer as any
+      req.file.buffer as any,
     );
 
     return res.json({
@@ -107,7 +107,7 @@ router.post("/login", loginUser);
 router.get("/me", verifyToken, getUserProfile);
 
 /* ======================================================
-   USERS
+   USERS (ADMIN ONLY)
 ====================================================== */
 router.get("/", verifyTokenAndAdmin, getAllUsers);
 router.get("/agents", verifyTokenAndAdmin, getAgents);
@@ -126,9 +126,17 @@ router.patch("/:id/status", verifyTokenAndAdmin, setStatus);
 
 /* ======================================================
    💰 CREDITS
+   - Agents can GET and SPEND their own credits
+   - Admins can ADD credits
 ====================================================== */
-router.get("/:id/credits", verifyTokenAndAdmin, getCreditsController);
+
+// Agent or admin can view their own credits
+router.get("/:id/credits", verifyToken, getCreditsController);
+
+// Admin-only: add credits to any account
 router.post("/:id/credits/add", verifyTokenAndAdmin, addCreditsController);
-router.post("/:id/credits/spend", verifyTokenAndAdmin, spendCreditsController);
+
+// Agent or admin can spend/deduct credits from their own account
+router.post("/:id/credits/spend", verifyToken, spendCreditsController);
 
 export default router;
