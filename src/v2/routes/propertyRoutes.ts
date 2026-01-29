@@ -28,6 +28,9 @@ router.get("/all", listHandler);
 // List properties by type ✅ Must come BEFORE /:id
 router.get("/type/:type", listHandler);
 
+// Fetch properties by category and optional subType
+router.get("/type/:category/:subType?", listHandler);
+
 // Get property by ID
 router.get("/:id", getHandler);
 

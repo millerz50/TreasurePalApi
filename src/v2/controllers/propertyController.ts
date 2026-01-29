@@ -32,16 +32,12 @@ function getErrorMessage(err: unknown): string {
 
 /** List all properties or by type */
 export async function listHandler(req: Request, res: Response) {
-  const type = (req.params as any).type; // undefined if not filtering
-  console.log("📋 [listHandler] type:", type);
+  const { category, subType } = req.params;
+
+  console.log("📋 [listHandler] category:", category, "subType:", subType);
 
   try {
-    const properties = await service.listProperties(type);
-    console.log(
-      "✅ [listHandler] fetched",
-      Array.isArray(properties) ? properties.length : "unknown",
-      "properties",
-    );
+    const properties = await service.listProperties(category, subType);
     return res.json(properties);
   } catch (err: unknown) {
     console.error("❌ [listHandler] error:", getErrorMessage(err));

@@ -60,11 +60,19 @@ function formatProperty(doc: Record<string, any>) {
 
 /* ------------------------------- READ ----------------------------------- */
 
-export async function listProperties(type?: string, limit = 100) {
+export async function listProperties(
+  category?: string,
+  subType?: string,
+  limit = 100,
+) {
   const queries: any[] = [];
 
-  if (type) {
-    queries.push(Query.equal("type", type));
+  if (category) {
+    queries.push(Query.equal("type", category)); // exact match, preserves PascalCase
+  }
+
+  if (subType) {
+    queries.push(Query.equal("subType", subType)); // optional subtype filter
   }
 
   const res = await databases.listDocuments(
